@@ -27,6 +27,9 @@ grep -q '^AUTH_TOKEN_ISSUER=' "$API_ENV_FILE" || fail "iss nicht in API-Config"
 pub="$(sed -n 's/^AUTH_PUBLIC_KEY_PATH=//p' "$API_ENV_FILE")"
 [ -s "$pub" ] || fail "oeffentlicher Schluessel fehlt: $pub"
 grep -q 'PRIVATE' "$pub" && fail "privater Schluessel in der API-Config"
+# TeacherOS-Instanzen schalten Einladung und Anmeldename zu (Tickets #23, #27); auch beim zweiten setup.
+grep -q '^INVITE_ENABLED=true$' "$AUTH_INSTANCE_DIR/app/.env" || fail "INVITE_ENABLED nicht gesetzt"
+grep -q '^USERNAME_LOGIN_ENABLED=true$' "$AUTH_INSTANCE_DIR/app/.env" || fail "USERNAME_LOGIN_ENABLED nicht gesetzt"
 
 "$SCRIPT" start >/dev/null || fail "start"
 "$SCRIPT" create-user --email=e2e@example.test --password='E2e-Passwort-123' >/dev/null || fail "create-user"
@@ -45,4 +48,11 @@ php -r '
   if (($c["aud"] ?? null) !== "teacheros:dev-schule") { fwrite(STDERR, "aud falsch\n"); exit(1); }
   if (($c["iss"] ?? null) !== $argv[3]) { fwrite(STDERR, "iss falsch\n"); exit(1); }
 ' "$resp" "$pub" "$(sed -n 's/^AUTH_TOKEN_ISSUER=//p' "$API_ENV_FILE")" || fail "JWT-Pruefung"
+
+# Anmeldung ueber das Feld `login` (G6): E-Mail wie Anmeldename, hier die E-Mail des angelegten Kontos.
+resp="$(curl -s -X POST "http://127.0.0.1:$AUTH_PORT/login" -H 'Content-Type: application/json'   -d '{"login":"e2e@example.test","password":"E2e-Passwort-123"}')"
+echo "$resp" | grep -q '"token"' || fail "Login ueber das Feld login: $resp"
+# Eine unbekannte Kennung ohne @ (Anmeldename) wird wie ein falsches Passwort beantwortet, nicht mit 400/500.
+code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$AUTH_PORT/login" -H 'Content-Type: application/json'   -d '{"login":"gibt.es.nicht","password":"E2e-Passwort-123"}')"
+[ "$code" = "401" ] || fail "unbekannter Anmeldename: erwartet 401, war $code"
 echo "OK"
