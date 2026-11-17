@@ -101,7 +101,25 @@ final class HttpTestApp
 
     public function resetAccounts(): void
     {
+        $this->pdo()->exec('DELETE FROM `permission_user_roles`');
+        $this->pdo()->exec('DELETE FROM `permission_user_overrides`');
         $this->pdo()->exec('DELETE FROM `accounts`');
+    }
+
+    /** Vergibt eine vorhandene Rolle direkt in der DB (Testaufbau, nicht der fachliche Weg). */
+    public function assignRole(string $publicUserId, string $roleKey): void
+    {
+        $this->pdo()->prepare('INSERT INTO `permission_user_roles` (`user_uuid`, `role_id`) SELECT ?, `id` FROM `permission_roles` WHERE `role_key` = ?')->execute([$publicUserId, $roleKey]);
+    }
+
+    /** Setzt die Migrationen dieser Rechte-Grundlage zurueck und fuehrt sie erneut aus (Wiederholbarkeit). */
+    public function rerunMigrations(string ...$files): void
+    {
+        $stmt = $this->pdo()->prepare('DELETE FROM `_setup_migrations` WHERE `filename` = ?');
+        foreach ($files as $file) {
+            $stmt->execute([$file]);
+        }
+        $this->migrate();
     }
 
     public function createAccount(string $publicUserId, string $status = 'active'): void

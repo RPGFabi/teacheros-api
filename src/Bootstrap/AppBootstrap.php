@@ -13,6 +13,7 @@ use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use Hoelzle\Core\Routing\Router;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
+use TeacherOS\Shared\Security\PermissionCatalog;
 
 final class AppBootstrap
 {
@@ -55,6 +56,7 @@ final class AppBootstrap
                 'status' => $session->account->status,
                 'mfa_required' => $session->account->mfaRequired,
             ],
+            'permissions' => PermissionCatalog::effectiveFor($session->account->publicUserId),
             'session' => [
                 'used_mfa' => $session->token->usedMfa,
                 'expires_at' => gmdate('c', $session->token->expiresAt),
