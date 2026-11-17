@@ -4,7 +4,9 @@
 #   -> POST /login -> GET /api/me (Konto aktiv, Rechte des Schuladmins) -> Audit-Eintraege.
 # Benoetigt MariaDB mit Root-Zugang (wie scripts/auth-instance.sh) und den Auth-Checkout:
 #   AUTH_SERVICE_PATH=D:/Programming/jwt-auth-service tests/e2e/first-admin-invite.sh
-# Nicht abgedeckt, bis der Anmeldedienst G6 (Einladung ohne E-Mail, Einladungscode) liefert: der Durchlauf per Anmeldename und Code.
+# Dazu der Durchlauf per Anmeldename und Code (Ticket #28, Anmeldedienst mit G6: Branch ticket/teacheros-10-login-name):
+#   CLI --login-name (ohne E-Mail) -> Code -> acceptInvite per Code -> Login per Anmeldename -> aktiv;
+#   Einladen per API (Anmeldename) -> Code; Erneut einladen -> neuer Code, der alte ist ungueltig.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -106,4 +108,57 @@ audit="$(H="$DB_HOST" P="$DB_PORT" N="$API_DB" U="$DB_USER" PW="$DB_PASSWORD" ph
   echo implode(",", $pdo->query("SELECT CONCAT(actor_type, \":\", action) FROM audit_log ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
   echo "|", $pdo->query("SELECT COUNT(*) FROM audit_log WHERE CONCAT_WS(\" \", action, object_id, IFNULL(context, \"\")) LIKE \"%@%\"")->fetchColumn();')"
 [ "$audit" = "cli:account.invited,cli:role.assigned,cli:account.reinvited,account:account.activated|0" ] || fail "Audit-Eintraege unerwartet: $audit"
+
+# 7. Durchlauf per Anmeldename und Code
+login_status() { curl -s -o /dev/null -w '%{http_code}' -X POST "$AUTH/login" -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}"; }
+login_token() { php -r '$r = json_decode($argv[1], true); echo $r["accessToken"] ?? $r["token"] ?? $r["access_token"] ?? "";' "$(curl -s -X POST "$AUTH/login" -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}")"; }
+accept_code() { curl -s -o "$TMP/accept.json" -w '%{http_code}' -X POST "$AUTH/acceptInvite" -H 'Content-Type: application/json' -d "{\"code\":\"$1\",\"password\":\"$PASSWORD\"}"; }
+api_me() { curl -s "http://127.0.0.1:$API_PORT/api/me" -H "Authorization: Bearer $1"; }
+code_of() { echo "$1" | grep -oE '[0-9A-Z]{4}(-[0-9A-Z]{4}){2,}$' | head -n 1; }
+
+# 7a. CLI: weiterer Schuladmin nur mit Anmeldename -> Code einmal auf der Konsole, keine Mail
+mails_before="$(queue | wc -l)"
+cli="$(cd "$ROOT" && php bin/invite-first-admin.php --login-name=frau.zwei --allow-additional-admin 2>&1)" || fail "CLI-Einladung per Anmeldename: $cli"
+cli_code="$(code_of "$cli")"
+[ -n "$cli_code" ] || fail "kein Einladungscode in der CLI-Ausgabe: $cli"
+[ "$(queue | wc -l)" -eq "$mails_before" ] || fail "Einladung ohne E-Mail darf keine Mail erzeugen"
+[ "$(login_status frau.zwei "$PASSWORD")" = 401 ] || fail "vor der Annahme darf kein Login per Anmeldename moeglich sein"
+[ "$(accept_code "XXXX-XXXX-XXXX-XXXX")" = 400 ] || fail "falscher Code muss abgelehnt werden"
+[ "$(accept_code "$cli_code")" = 200 ] || fail "acceptInvite mit CLI-Code: $(cat "$TMP/accept.json") (Code $cli_code)"
+[ "$(accept_code "$cli_code")" = 400 ] || fail "Code darf nur einmal einloesbar sein"
+[ "$(login_status frau.zwei falsches-passwort)" = 401 ] || fail "falsches Passwort per Anmeldename"
+[ "$(login_status gibt.es.nicht "$PASSWORD")" = 401 ] || fail "unbekannter Anmeldename"
+jwt2="$(login_token frau.zwei "$PASSWORD")"
+[ -n "$jwt2" ] || fail "Login per Anmeldename ohne Token"
+me2="$(api_me "$jwt2")"
+[ "$(json "$me2" account.status)" = active ] || fail "Konto frau.zwei nicht aktiv: $me2"
+echo "$me2" | grep -q '"accounts.invite"' || fail "Rechte von frau.zwei fehlen: $me2"
+
+# 7b. Web-Weg: der Schuladmin laedt per API nur mit Anmeldename ein, laedt erneut ein; nur der neue Code gilt
+inv() { curl -s -X POST "http://127.0.0.1:$API_PORT/api/accounts/invitations" -H "Authorization: Bearer $jwt" -H 'Content-Type: application/json' -d "$1"; }
+r1="$(inv '{"login_name":"schueler.eins"}')"
+id="$(json "$r1" account.id)"
+code1="$(json "$r1" invite_code)"
+[ -n "$id" ] && [ -n "$code1" ] || fail "Einladung per Anmeldename ohne Code: $r1"
+[ "$(json "$r1" account.email)" = null ] || fail "Konto ohne E-Mail erwartet: $r1"
+r2="$(curl -s -X POST "http://127.0.0.1:$API_PORT/api/accounts/$id/reinvite" -H "Authorization: Bearer $jwt")"
+code2="$(json "$r2" invite_code)"
+[ -n "$code2" ] && [ "$code2" != "$code1" ] || fail "Erneut einladen muss einen neuen Code liefern: $r2"
+[ "$(accept_code "$code1")" = 400 ] || fail "der Code der vorigen Einladung muss ungueltig sein"
+[ "$(accept_code "$code2")" = 200 ] || fail "acceptInvite mit dem neuen Code"
+jwt3="$(login_token schueler.eins "$PASSWORD")"
+[ -n "$jwt3" ] || fail "Login von schueler.eins ohne Token"
+me3="$(api_me "$jwt3")"
+[ "$(json "$me3" account.status)" = active ] || fail "Konto schueler.eins nicht aktiv: $me3"
+echo "$me3" | grep -q '"accounts.' && fail "schueler.eins darf keine Konten-Rechte haben: $me3"
+again="$(inv '{"login_name":"schueler.eins"}')"
+[ "$(json "$again" code)" = already_active ] || fail "aktives Konto erneut einladen muss already_active geben"
+
+# 7c. Der Code steht nirgends in der API-Datenbank
+leak="$(H="$DB_HOST" P="$DB_PORT" N="$API_DB" U="$DB_USER" PW="$DB_PASSWORD" C1="$code1" C2="$code2" C3="$cli_code" php -r '
+  $pdo = new PDO("mysql:host=".getenv("H").";port=".getenv("P").";dbname=".getenv("N").";charset=utf8mb4", getenv("U"), getenv("PW"));
+  $dump = "";
+  foreach (["accounts", "audit_log"] as $t) { $dump .= json_encode($pdo->query("SELECT * FROM `$t`")->fetchAll(PDO::FETCH_ASSOC)); }
+  foreach (["C1", "C2", "C3"] as $c) { if (str_contains($dump, getenv($c))) { echo "leak"; } }')"
+[ -z "$leak" ] || fail "ein Einladungscode steht in der API-Datenbank"
 echo "OK"

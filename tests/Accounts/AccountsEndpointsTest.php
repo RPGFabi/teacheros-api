@@ -147,17 +147,72 @@ final class AccountsEndpointsTest extends TestCase
         $this->assertStringNotContainsString('ABCD', json_encode($this->app->accounts()) . json_encode($this->app->auditLog()));
     }
 
-    public function testEinladenOhneOderMitUngueltigerEmailIstEinFehlerAufrufOhneAnmeldedienst(): void
+    public function testEinladenOhneEmailUndOhneAnmeldenameOderMitUngueltigerEmailIstEinFehlerAufrufOhneAnmeldedienst(): void
     {
         $this->asAdmin();
 
-        $none = $this->invite(['login_name' => 'nur-name']);
+        $none = $this->invite([]);
         $bad = $this->invite(['email' => 'keine-mail']);
 
-        $this->assertSame([400, 'email_required'], [$none['status'], $none['json']['code']]);
+        $this->assertSame([400, 'identifier_required'], [$none['status'], $none['json']['code']]);
         $this->assertSame([400, 'invalid_email'], [$bad['status'], $bad['json']['code']]);
         $this->assertSame([], $this->stub->inviteCalls());
         $this->assertCount(1, $this->app->accounts());
+    }
+
+    public function testEinladenNurMitAnmeldenameLegtKontoOhneEmailAnUndGibtDenCodeEinmaligZurueck(): void
+    {
+        $this->asAdmin();
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => true, 'already_active' => false, 'username' => 'schueler.eins', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS']]);
+
+        $r = $this->invite(['login_name' => 'Schueler.Eins']);
+
+        $this->assertSame(201, $r['status'], $r['body']);
+        $this->assertNull($r['json']['account']['email']);
+        $this->assertSame('schueler.eins', $r['json']['account']['login_name']);
+        $this->assertSame('invited', $r['json']['account']['status']);
+        $this->assertSame('ABCD-EFGH-JKMN-PQRS', $r['json']['invite_code']);
+
+        $body = $this->stub->inviteCalls()[0]['body'];
+        $this->assertArrayNotHasKey('email', $body);
+        $this->assertSame('schueler.eins', $body['username']);
+
+        $local = array_column($this->app->accounts(), null, 'public_user_id')[self::OTHER];
+        $this->assertNull($local['email']);
+        $this->assertSame('schueler.eins', $local['login_name']);
+        $this->assertSame(['account.invited'], $this->auditActions());
+        $this->assertStringNotContainsString('ABCD', json_encode([$this->app->accounts(), $this->app->auditLog()]), 'der Code wird nirgends gespeichert');
+    }
+
+    public function testErneutEinladenOhneEmailLiefertEinenNeuenCodeUndSendetNurDenAnmeldenamen(): void
+    {
+        $this->asAdmin();
+        $this->app->createAccount(self::OTHER, 'invited', null, 'schueler.eins');
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => false, 'already_active' => false, 'username' => 'schueler.eins', 'invite_code' => 'WXYZ-2345-6789-ABCD']]);
+
+        $r = $this->call('POST', '/api/accounts/' . self::OTHER . '/reinvite');
+
+        $this->assertSame(200, $r['status'], $r['body']);
+        $this->assertSame('WXYZ-2345-6789-ABCD', $r['json']['invite_code']);
+        $this->assertNull($r['json']['account']['email']);
+        $this->assertSame('schueler.eins', $r['json']['account']['login_name']);
+        $body = $this->stub->inviteCalls()[0]['body'];
+        $this->assertArrayNotHasKey('email', $body);
+        $this->assertSame('schueler.eins', $body['username']);
+        $this->assertSame(['account.reinvited'], $this->auditActions());
+        $this->assertStringNotContainsString('WXYZ', json_encode([$this->app->accounts(), $this->app->auditLog()]));
+    }
+
+    public function testNochEinmalEinladenNurMitAnmeldenameIstEineErneuteEinladungDesselbenKontos(): void
+    {
+        $this->asAdmin();
+        $this->app->createAccount(self::OTHER, 'invited', null, 'max');
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => false, 'already_active' => false, 'username' => 'max', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS']]);
+
+        $r = $this->invite(['login_name' => 'max']);
+
+        $this->assertSame(201, $r['status'], $r['body']);
+        $this->assertSame(self::OTHER, $r['json']['account']['id']);
     }
 
     public function testErneutesEinladenDerEmailEinesEingeladenenKontosIstGefahrlosUndErzeugtKeinZweitesKonto(): void

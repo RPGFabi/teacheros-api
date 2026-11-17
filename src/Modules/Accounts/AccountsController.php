@@ -26,15 +26,14 @@ final class AccountsController
     {
         $email = self::text($request->getBody('email'));
         $loginName = self::text($request->getBody('login_name'));
-        if ($email === null) {
-            // Einladung nur per Anmeldename ohne E-Mail kommt mit Ticket #28.
-            throw new CodedException('email_required', 400, 'Eine E-Mail-Adresse ist erforderlich.');
+        if ($email === null && $loginName === null) {
+            throw new CodedException('identifier_required', 400, 'Eine E-Mail-Adresse oder ein Anmeldename ist erforderlich.');
         }
-        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        if ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             throw new CodedException('invalid_email', 400, 'Die E-Mail-Adresse ist ungueltig.');
         }
 
-        $result = (new AccountInvitations())->invite(strtolower($email), $loginName === null ? null : strtolower($loginName), self::actor());
+        $result = (new AccountInvitations())->invite($email === null ? null : strtolower($email), $loginName === null ? null : strtolower($loginName), self::actor());
         $response->json(self::payload($result), 201);
     }
 

@@ -21,7 +21,7 @@ $opts = getopt('', ['email::', 'login-name::', 'allow-additional-admin']);
 $email = isset($opts['email']) && is_string($opts['email']) && trim($opts['email']) !== '' ? trim($opts['email']) : null;
 $loginName = isset($opts['login-name']) && is_string($opts['login-name']) && trim($opts['login-name']) !== '' ? trim($opts['login-name']) : null;
 if (($email === null && $loginName === null) || ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false)) {
-    fwrite(STDERR, "Aufruf: php bin/invite-first-admin.php --email=<adresse> [--login-name=<name>] [--allow-additional-admin]\n");
+    fwrite(STDERR, "Aufruf: php bin/invite-first-admin.php [--email=<adresse>] [--login-name=<name>] (mindestens eins) [--allow-additional-admin]\n");
     exit(2);
 }
 

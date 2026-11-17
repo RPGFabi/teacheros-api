@@ -49,6 +49,7 @@ php bin/invite-first-admin.php --email=admin@schule.example [--login-name=name] 
 ```
 
 - Die Person erhält die Mail mit Link auf `<FRONTEND>/einladung?token=…`, setzt dort ihr Passwort (direkt beim Anmeldedienst) und meldet sich an; dabei wird das Konto `aktiv`.
+- Nur mit `--login-name` (ohne `--email`, Ticket #28) geht keine Mail raus: der Befehl gibt den Einladungscode **einmal** auf der Konsole aus (`Einladungscode (wird nur jetzt angezeigt): XXXX-XXXX-XXXX`), die Person tippt ihn auf `<FRONTEND>/einladung` ein. Die Auth-Instanz braucht dafür `USERNAME_LOGIN_ENABLED=true` (sonst `400 username_login_disabled`, Exit 4).
 - Ist schon ein **aktiver** Schuladmin vorhanden, lehnt der Befehl ab (Exit 3, `admin_exists`), außer mit `--allow-additional-admin`. Ein nur eingeladener Admin lässt sich ohne Option erneut einladen, auch an eine andere Adresse: die frühere Einladung wird dann beim Anmeldedienst gelöscht und lokal ersetzt.
 - Exit-Codes: 0 ok, 2 Aufruf falsch, 3 abgelehnt (`admin_exists`, `already_active`, `account_inactive`, `username_taken`, `email_taken`), 4 Anmeldedienst nicht verfügbar (`auth_unavailable`, es bleibt kein halber Zustand, Wiederholung ist gefahrlos).
 - Audit-Einträge (`account.invited`/`account.reinvited`, `role.assigned`, später `account.activated`) tragen den Akteur `cli` und keine E-Mail-Adresse.
@@ -62,12 +63,14 @@ Schuladmins (Recht `accounts.view` bzw. `accounts.invite`, nicht die Rolle) verw
 | Endpunkt | Recht | Antwort |
 |---|---|---|
 | `GET /api/accounts` | `accounts.view` | `200 {"accounts": [{id, email, login_name, status, invited_at}]}` (`invited_at` ISO 8601 UTC oder `null`) |
-| `POST /api/accounts/invitations` `{email, login_name?}` | `accounts.invite` | `201 {"account": {...}, "invite_code": null}` |
+| `POST /api/accounts/invitations` `{email?, login_name?}` (mindestens eins) | `accounts.invite` | `201 {"account": {...}, "invite_code": null}`; ohne E-Mail steht der Code einmalig in `invite_code` |
 | `POST /api/accounts/{id}/reinvite` | `accounts.invite` | `200`, gleiche Form; `{id}` ist die `public_user_id` |
 
-- Codes: `403 forbidden`; `400 email_required`/`invalid_email`/`invalid_username`; `404 account_not_found`; `409 already_active`/`account_inactive`/`username_taken`/`email_taken`; `502 auth_unavailable` (nichts wird lokal angelegt, Wiederholung ist gefahrlos).
+- Codes: `403 forbidden`; `400 identifier_required`/`invalid_email`/`invalid_username`; `404 account_not_found`; `409 already_active`/`account_inactive`/`username_taken`/`email_taken`; `502 auth_unavailable` (nichts wird lokal angelegt, Wiederholung ist gefahrlos).
 - Die E-Mail eines noch nicht angenommenen Kontos erneut einzuladen ist eine erneute Einladung desselben Kontos (`account.reinvited`); mit anderem Anmeldenamen als gespeichert ergibt es `email_taken`.
-- Audit-Eintrag (`account.invited`/`account.reinvited`) mit Akteur `account` und dem einladenden Konto, ohne E-Mail. `invite_code` reicht die API nur aus dem Ergebnis des Anmeldedienstes durch (Einladung ohne E-Mail, Ticket #28) und speichert ihn nicht.
+- Audit-Eintrag (`account.invited`/`account.reinvited`) mit Akteur `account` und dem einladenden Konto, ohne E-Mail. `invite_code` reicht die API nur aus dem Ergebnis des Anmeldedienstes durch und speichert ihn nicht (weder Konto noch Audit).
+- Einladen ohne E-Mail (Ticket #28): `{"login_name": "schueler.eins"}` legt ein Konto ohne E-Mail an. Erneut einladen eines Kontos ohne E-Mail liefert einen neuen Code und macht den vorigen ungültig. Die Antwort enthält kein Ablaufdatum des Codes (der Anmeldedienst nennt keins); die Einladungskarte lässt „gültig bis“ deshalb weg.
+- Die Web-Seite zeigt den Code auf einer druckbaren Einladungskarte (10 × 3 cm, QR-Code auf `<Web-Origin>/einladung?code=…`, A4-Raster 2 × 9 über `@media print`). E2E: `tests/e2e/first-admin-invite.sh` spielt auch den Durchlauf per Anmeldename und Code durch (CLI und API, Anmeldedienst mit G6).
 
 ## Weiterführend
 

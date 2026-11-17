@@ -95,14 +95,15 @@ final class AccountInvitations
     }
 
     /**
-     * Laedt ein Konto per E-Mail ein (Web, Akteur ist das einladende Konto). Gehoert die E-Mail schon einem
-     * noch nicht angenommenen Konto, ist das eine erneute Einladung desselben Kontos (Wiederholung gefahrlos).
+     * Laedt ein Konto per E-Mail und/oder Anmeldename ein (Web, Akteur ist das einladende Konto). Gehoert die E-Mail schon einem
+     * noch nicht angenommenen Konto (ohne E-Mail: der Anmeldename), ist das eine erneute Einladung desselben
+     * Kontos (Wiederholung gefahrlos). Ohne E-Mail liefert das Ergebnis einmalig den Einladungscode.
      * Rollen werden hier nicht vergeben.
      *
      * @throws CodedException `already_active`, `account_inactive`, `username_taken`, `email_taken`
      * @throws \TeacherOS\Shared\AuthService\AuthServiceUnavailableException
      */
-    public function invite(string $email, ?string $loginName, Actor $actor): InvitationResult
+    public function invite(?string $email, ?string $loginName, Actor $actor): InvitationResult
     {
         return $this->send($this->findTarget($email, $loginName), $email, $loginName, $actor);
     }
