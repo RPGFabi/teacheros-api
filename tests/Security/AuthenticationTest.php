@@ -94,21 +94,15 @@ final class AuthenticationTest extends TestCase
         $this->assertSame(401, $r['status']);
     }
 
-    #[DataProvider('nichtAktiveStatus')]
-    public function testKontoOhneStatusAktivLiefert401AccountInactive(string $status): void
+    public function testInaktivesKontoLiefert401AccountInactive(): void
     {
-        $this->app->createAccount(self::SUB, $status);
+        // Ein eingeladenes Konto wird dagegen bei der ersten Anmeldung aktiv (Ticket #25, tests/Security/ActivationTest.php).
+        $this->app->createAccount(self::SUB, 'inactive');
 
         $r = $this->me(TestTokens::access(self::SUB));
 
         $this->assertSame(401, $r['status']);
         $this->assertSame('account_inactive', $r['json']['code']);
-    }
-
-    /** @return array<string, array{string}> */
-    public static function nichtAktiveStatus(): array
-    {
-        return ['inactive' => ['inactive'], 'invited' => ['invited']];
     }
 
     public function testDeaktiviertesKontoWirdBeimNaechstenRequestAbgewiesen(): void

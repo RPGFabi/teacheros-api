@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace TeacherOS\Shared\Security;
 
 use Hoelzle\Core\Config\Config;
+use Hoelzle\Core\Database\DB;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
+use TeacherOS\Shared\Audit\Actor;
+use TeacherOS\Shared\Audit\AuditLog;
 
 /**
  * ADR 0002 B1: JWT lokal pruefen, Konto ueber `sub` laden, Status bei jedem
@@ -42,6 +45,10 @@ final class AuthenticationMiddleware
             $response->json(['error' => 'Unknown account', 'code' => 'unknown_account'], 401);
             return false;
         }
+        if ($account->status === 'invited') {
+            // Ein gueltiges Token gibt es erst nach Annahme der Einladung: erste Anmeldung => aktiv.
+            $account = self::activate($account);
+        }
         if (!$account->isActive()) {
             $response->json(['error' => 'Account is not active', 'code' => 'account_inactive'], 401);
             return false;
@@ -49,6 +56,24 @@ final class AuthenticationMiddleware
 
         self::$current = new AuthenticatedSession($account, $token);
         return true;
+    }
+
+    private static function activate(Account $account): Account
+    {
+        $accounts = new AccountRepository();
+        $pdo = DB::getInstance();
+        $pdo->beginTransaction();
+        try {
+            if ($accounts->activateIfInvited($account->publicUserId)) {
+                (new AuditLog())->record(Actor::account($account->publicUserId), AuditLog::ACCOUNT_ACTIVATED, 'account', $account->publicUserId);
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+        // Frisch lesen: bei gleichzeitigen Anmeldungen zaehlt der Stand der Datenbank (kein Cache, B1).
+        return $accounts->findByPublicUserId($account->publicUserId) ?? $account;
     }
 
     private static function verifier(): AccessTokenVerifier

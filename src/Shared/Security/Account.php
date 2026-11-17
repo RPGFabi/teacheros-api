@@ -10,6 +10,8 @@ final class Account
         public readonly string $publicUserId,
         public readonly string $status,
         public readonly bool $mfaRequired,
+        public readonly ?string $email = null,
+        public readonly string $loginName = '',
     ) {
     }
 

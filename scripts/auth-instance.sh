@@ -148,7 +148,10 @@ write_api_config() {
   set_env_key "$API_ENV_FILE" AUTH_PUBLIC_KEY_PATH "$(native "$PUBLIC_KEY")"
   set_env_key "$API_ENV_FILE" AUTH_TOKEN_ISSUER "$TOKEN_ISSUER"
   set_env_key "$API_ENV_FILE" AUTH_TOKEN_AUDIENCE "$TOKEN_AUDIENCE"
-  set_env_key "$API_ENV_FILE" AUTH_BASE_URL "http://127.0.0.1:$PORT"
+  set_env_key "$API_ENV_FILE" AUTH_SERVICE_URL "http://127.0.0.1:$PORT"
+  # Gemeinsames Secret der internen Aufrufe (Einladung): aus der Instanz-.env, nie ins Repo.
+  local secret; secret="$(sed -n 's/^AUTH_SERVER_WEBHOOK_SECRET=//p' "$APP_DIR/.env" | tail -n 1)"
+  set_env_key "$API_ENV_FILE" AUTH_SERVICE_WEBHOOK_SECRET "$secret"
   log "API-Config aktualisiert: $API_ENV_FILE"
 }
 

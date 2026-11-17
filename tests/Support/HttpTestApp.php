@@ -104,6 +104,7 @@ final class HttpTestApp
         $this->pdo()->exec('DELETE FROM `permission_user_roles`');
         $this->pdo()->exec('DELETE FROM `permission_user_overrides`');
         $this->pdo()->exec('DELETE FROM `accounts`');
+        $this->pdo()->exec('DELETE FROM `audit_log`');
     }
 
     /** Vergibt eine vorhandene Rolle direkt in der DB (Testaufbau, nicht der fachliche Weg). */
@@ -122,9 +123,38 @@ final class HttpTestApp
         $this->migrate();
     }
 
-    public function createAccount(string $publicUserId, string $status = 'active'): void
+    public function createAccount(string $publicUserId, string $status = 'active', ?string $email = null, ?string $loginName = null): void
     {
-        $this->pdo()->prepare('INSERT INTO `accounts` (`public_user_id`, `status`) VALUES (?, ?)')->execute([$publicUserId, $status]);
+        $this->pdo()->prepare('INSERT INTO `accounts` (`public_user_id`, `status`, `email`, `login_name`) VALUES (?, ?, ?, ?)')
+            ->execute([$publicUserId, $status, $email, $loginName ?? $email ?? $publicUserId]);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function accounts(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `accounts` ORDER BY `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function auditLog(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `audit_log` ORDER BY `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Fuehrt ein CLI-Skript der API (z. B. bin/invite-first-admin.php) als Unterprozess
+     * gegen die Test-DB aus; $env ergaenzt/ueberschreibt die Umgebung (z. B. AuthStub::env()).
+     *
+     * @param list<string> $args
+     * @return array{code:int, out:string, err:string}
+     */
+    public function cli(string $script, array $args = [], array $env = []): array
+    {
+        $full = array_merge(getenv(), $this->env(), $env);
+        $p = proc_open([PHP_BINARY, $this->root . '/' . $script, ...$args], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->root, $full);
+        $out = stream_get_contents($pipes[1]);
+        $err = stream_get_contents($pipes[2]);
+        return ['code' => proc_close($p), 'out' => $out, 'err' => $err];
     }
 
     public function setAccountStatus(string $publicUserId, string $status): void
