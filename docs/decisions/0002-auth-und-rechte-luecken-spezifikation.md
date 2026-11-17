@@ -164,6 +164,8 @@ Höchstens 200 IDs pro Aufruf. `required: false` setzt `mfa_required_at = NULL`.
 - **Einladung:** `{"event":"user.invite","email":"optional","username":"optional"}`, mindestens eins von beiden. Ohne `username` ist er die E-Mail. Ist der Anmeldename vergeben, kommt `409 {"code":"username_taken"}`. Ohne E-Mail wird keine Mail versendet, und die Antwort enthält einmalig `invite_code` (Crockford-Base32, etwa 60 Bit, gruppiert). Gespeichert wird nur der Hash, die Gültigkeit entspricht `INVITE_TOKEN_DURATION_HRS`, und erneutes Einladen macht den alten Code ungültig.
 - **Annahme:** `POST /acceptInvite` nimmt `{token | code, password}` an, mit derselben Rate-Limit-Regel wie bisher.
 
+**Ergänzungen aus der Umsetzung (Ticket #27):** Der Anmeldename wird getrimmt und kleingeschrieben gespeichert, und die Einladungsantwort enthält ihn als `username`. Ein ungültiger Name ergibt `400 {"code":"invalid_username"}`. Eine Einladung ohne E-Mail bei ausgeschaltetem Schalter ergibt `400 {"code":"username_login_disabled"}`, weil sich ein solches Konto nie anmelden könnte. Ein eigenes `email_taken` kennt der Anmeldedienst nicht: Eine bekannte E-Mail führt wie in G5 zu einer erneuten Einladung, die Eindeutigkeit prüft die API lokal. `credentials.email` wird in einer eigenen Migration 0006 nullbar. `/updatePassword` verlangt weiter eine E-Mail.
+
 **Bewusst nicht Teil von G6:** Sammel-Einladung für ganze Klassen und Passwort-Reset durch die Schule ohne E-Mail. Für beide gibt es eigene Issues.
 
 ### Nicht Teil der Erweiterung (bewusst)

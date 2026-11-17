@@ -20,7 +20,7 @@ Lokal liegen alle Repos unter `D:\Programming\TeacherOS\apps\` bzw. `D:\Programm
 
 ## Lokale Auth-Instanz (Dev-Schule)
 
-Jede Schule hat eine eigene `jwt-auth-service`-Instanz mit eigener Datenbank, eigenem RS256-Schlüsselpaar und eigenem `iss`/`aud` (ADR 0002 „Grundsatz“). Für die Entwicklungsschule richtet `scripts/auth-instance.sh` sie reproduzierbar ein (`iss=https://auth.dev-schule.teacheros.test`, `aud=teacheros:dev-schule`, `REGISTRATION_DISABLED=true`, Mail-Branding „Dev-Schule“). Das Skript ist die Vorlage für die spätere Provisionierung pro Schule.
+Jede Schule hat eine eigene `jwt-auth-service`-Instanz mit eigener Datenbank, eigenem RS256-Schlüsselpaar und eigenem `iss`/`aud` (ADR 0002 „Grundsatz“). Für die Entwicklungsschule richtet `scripts/auth-instance.sh` sie reproduzierbar ein (`iss=https://auth.dev-schule.teacheros.test`, `aud=teacheros:dev-schule`, `REGISTRATION_DISABLED=true`, `INVITE_ENABLED=true`, `USERNAME_LOGIN_ENABLED=true`, Mail-Branding „Dev-Schule“). Das Skript ist die Vorlage für die spätere Provisionierung pro Schule.
 
 Voraussetzungen: PHP >= 8.4 (sodium, openssl, pdo_mysql) im `PATH`, MariaDB auf `127.0.0.1:3306` mit Root-Zugang (Standard `root`/`teacheros-root`, wie in `docker-compose.yml`) und ein Auth-Checkout mit installierten Abhängigkeiten (`composer install`).
 
