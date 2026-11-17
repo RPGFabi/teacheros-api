@@ -143,6 +143,8 @@ Höchstens 200 IDs pro Aufruf. `required: false` setzt `mfa_required_at = NULL`.
 
 **Annahme der Einladung:** Der neue Endpunkt `POST /acceptInvite` erwartet `{token, password}` mit Rate-Limit-Regel `reset_password`. Er prüft das Passwort mit der bestehenden `validatePassword`-Regel und setzt dann in einer Transaktion `confirmed_email = 1`, `is_active = 1` und den Passworthash. Das Token wird verbraucht. Die Antwort enthält kein Access-Token, die Person meldet sich danach normal an und richtet bei einer Pflicht TOTP ein.
 
+**Zuschaltbar pro Instanz (Nachtrag, Ticket #23):** Die Einladung ist nur aktiv, wenn die Auth-Instanz `INVITE_ENABLED=true` hat (Standard `false`, damit andere Verbraucher des gemeinsamen Dienstes wie EAW sie nicht ungewollt bekommen). Ohne den Schalter sind `POST /internal/users/invite` und `POST /acceptInvite` 404 und `auth_invite` fehlt im Testmail-Katalog. Die lokale und jede TeacherOS-Instanz setzt ihn (`scripts/auth-instance.sh`). Eine Instanz ohne Weg zur Kontoanlage (`REGISTRATION_DISABLED=true`, Einladung aus) beantwortet jede Anfrage mit 500 und einem Konfigurationsfehler im Log (fail-closed), außer sie ist mit `ACCOUNT_CREATION_CLI_ONLY=true` ausdrücklich als reine CLI-Instanz gesetzt; Konten entstehen dann nur über `bin/create-user.php`.
+
 **Tests:**
 - Einladen, Annehmen und Login funktionieren durchgängig.
 - Ein abgelaufenes oder schon verwendetes Token führt zu 400.

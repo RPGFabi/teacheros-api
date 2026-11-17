@@ -106,11 +106,17 @@ generate_keys() {
 
 write_env() {
   local env="$APP_DIR/.env"
-  if [ -f "$env" ]; then log ".env vorhanden, bleibt unveraendert (Secrets bleiben stabil)"; return; fi
+  if [ -f "$env" ]; then
+    # Die Einladung ist pro Instanz zuschaltbar (Ticket #23); auch vorhandene Instanzen bekommen sie.
+    set_env_key "$env" INVITE_ENABLED true
+    log ".env vorhanden, bleibt unveraendert (Secrets bleiben stabil; INVITE_ENABLED=true gesetzt)"
+    return
+  fi
   cp "$AUTH_SERVICE_PATH/.env.example" "$env"
   set_env_key "$env" APP_ENV dev
   set_env_key "$env" APP_DOMAIN "auth.$SCHOOL_SLUG.teacheros.test"
   set_env_key "$env" REGISTRATION_DISABLED true
+  set_env_key "$env" INVITE_ENABLED true
   set_env_key "$env" DB_HOST "$DB_HOST"
   set_env_key "$env" DB_PORT "$DB_PORT"
   set_env_key "$env" DB_NAME "$DB_NAME"
