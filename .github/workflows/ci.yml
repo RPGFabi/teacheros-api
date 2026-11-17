@@ -31,6 +31,9 @@ jobs:
           extensions: pdo_mysql, mbstring
           tools: composer
       - run: composer install --no-interaction --prefer-dist
+        env:
+          # PHP-Core (und spaeter PHP-Permissions) sind private Repos; PAT mit Lesezugriff.
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.PACKAGES_TOKEN }}"}}'
       - name: Syntaxpruefung
         run: find src public setup tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
       - run: vendor/bin/phpunit
