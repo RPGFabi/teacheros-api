@@ -12,4 +12,4 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
-Zusätzlich trägt jedes Ticket genau ein Ziel-Repo-Label: `repo:api`, `repo:web` oder `repo:auth` (siehe `issue-tracker.md`).
+Zusätzlich trägt jedes Ticket ein oder mehrere Ziel-Repo-Labels: `repo:api`, `repo:web` oder `repo:auth` (siehe `issue-tracker.md`).

@@ -4,8 +4,8 @@ Issues und Specs für **alle** TeacherOS-Repos (`teacheros-api`, `teacheros-web`
 
 ## Ziel-Repo
 
-- Jedes Ticket trägt genau ein Label `repo:api`, `repo:web` oder `repo:auth`. Es legt fest, in welchem Repo umgesetzt wird.
-- Branch, Commits und PR entstehen im Ziel-Repo. Das PR verweist auf das Ticket, z. B. `Closes RPGFabi/teacheros-api#<n>`.
+- Jedes Ticket trägt ein oder mehrere Labels `repo:api`, `repo:web`, `repo:auth`. Sie legen fest, in welchen Repos umgesetzt wird; vertikale Tickets über API und Web tragen beide.
+- Branch, Commits und PR entstehen in jedem Ziel-Repo (ein PR pro Repo). Jedes PR verweist auf das Ticket, z. B. `Closes RPGFabi/teacheros-api#<n>`.
 - `repo:auth`-Tickets betreffen den gemeinsamen Dienst, den auch EAW nutzt. Änderungen müssen abwärtskompatibel sein und Regressionstests enthalten (ADR 0003). Branch aus `dev`.
 
 ## Conventions
@@ -32,7 +32,7 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue in `RPGFabi/teacheros-api` with exactly one `repo:*` label.
+Create a GitHub issue in `RPGFabi/teacheros-api` with one or more `repo:*` labels.
 
 ## When a skill says "fetch the relevant ticket"
 
