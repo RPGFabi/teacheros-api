@@ -95,6 +95,75 @@ final class AccountInvitations
     }
 
     /**
+     * Laedt ein Konto per E-Mail ein (Web, Akteur ist das einladende Konto). Gehoert die E-Mail schon einem
+     * noch nicht angenommenen Konto, ist das eine erneute Einladung desselben Kontos (Wiederholung gefahrlos).
+     * Rollen werden hier nicht vergeben.
+     *
+     * @throws CodedException `already_active`, `account_inactive`, `username_taken`, `email_taken`
+     * @throws \TeacherOS\Shared\AuthService\AuthServiceUnavailableException
+     */
+    public function invite(string $email, ?string $loginName, Actor $actor): InvitationResult
+    {
+        return $this->send($this->findTarget($email, $loginName), $email, $loginName, $actor);
+    }
+
+    /**
+     * Laedt ein noch nicht angenommenes Konto erneut ein; die vorige Einladung wird dadurch ungueltig.
+     *
+     * @throws CodedException `account_not_found` (404), `already_active`, `account_inactive`
+     * @throws \TeacherOS\Shared\AuthService\AuthServiceUnavailableException
+     */
+    public function reinvite(string $publicUserId, Actor $actor): InvitationResult
+    {
+        $target = $this->accounts->findByPublicUserId($publicUserId)
+            ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+        $this->assertInvitable($target);
+        $ownName = strcasecmp($target->loginName, (string) $target->email) === 0 ? null : $target->loginName;
+
+        return $this->send($target, $target->email, $ownName, $actor);
+    }
+
+    /** Anmeldedienst, dann Konto und Audit-Eintrag in einer Transaktion (ohne Rolle). */
+    private function send(?Account $target, ?string $email, ?string $loginName, Actor $actor): InvitationResult
+    {
+        $invite = $this->authService->invite($email, $loginName);
+        $name = $invite->username ?? $target?->loginName ?? $loginName ?? $email;
+
+        $this->transaction(function () use ($target, $invite, $email, $name, $actor): void {
+            if ($target !== null) {
+                $this->accounts->markInvitedNow($target->publicUserId);
+            } else {
+                $this->accounts->create($invite->publicUserId, 'invited', $email, $name);
+            }
+            $this->audit->record(
+                $actor,
+                $target !== null ? AuditLog::ACCOUNT_REINVITED : AuditLog::ACCOUNT_INVITED,
+                'account',
+                $invite->publicUserId,
+            );
+        });
+
+        return new InvitationResult($invite->publicUserId, $email, $name, $target !== null, $invite->inviteCode);
+    }
+
+    /** Fuehrt $work in einer DB-Transaktion aus; Eindeutigkeitsverletzungen werden zu `email_taken`/`username_taken`. */
+    private function transaction(callable $work): void
+    {
+        $pdo = DB::getInstance();
+        $pdo->beginTransaction();
+        try {
+            $work();
+            $pdo->commit();
+        } catch (\PDOException $e) {
+            $pdo->rollBack();
+            throw $this->conflictFrom($e) ?? $e;
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
      * Das lokale Konto, das diese Einladung erneuert (nach E-Mail, sonst nach Anmeldename), oder null.
      * Aktive Konten und fremde Namen werden hier abgewiesen, bevor der Anmeldedienst gefragt wird.
      */
@@ -107,13 +176,23 @@ final class AccountInvitations
         if ($email !== null && $byName !== null && $byName->publicUserId !== $byEmail?->publicUserId) {
             throw new CodedException('username_taken', 409, 'Der Anmeldename ist schon vergeben.');
         }
-        if ($target?->status === 'active') {
-            throw new CodedException('already_active', 409, 'Das Konto ist schon aktiv.');
+        if ($byEmail !== null && $loginName !== null && strcasecmp($loginName, $byEmail->loginName) !== 0) {
+            throw new CodedException('email_taken', 409, 'Die E-Mail-Adresse gehoert schon zu einem anderen Konto.');
         }
-        if ($target?->status === 'inactive') {
-            throw new CodedException('account_inactive', 409, 'Das Konto ist deaktiviert und kann nicht eingeladen werden.');
+        if ($target !== null) {
+            $this->assertInvitable($target);
         }
         return $target;
+    }
+
+    private function assertInvitable(Account $account): void
+    {
+        if ($account->status === 'active') {
+            throw new CodedException('already_active', 409, 'Das Konto ist schon aktiv.');
+        }
+        if ($account->status === 'inactive') {
+            throw new CodedException('account_inactive', 409, 'Das Konto ist deaktiviert und kann nicht eingeladen werden.');
+        }
     }
 
     private function conflictFrom(\PDOException $e): ?CodedException

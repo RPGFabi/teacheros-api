@@ -31,9 +31,10 @@ final class HttpTestApp
     }
 
     /** @return array{status:int, body:string, json:?array} */
-    public function request(string $method, string $uri, array $env = []): array
+    public function request(string $method, string $uri, array $env = [], ?array $json = null): array
     {
         $cgi = getenv('TEST_PHP_CGI') ?: dirname(PHP_BINARY) . DIRECTORY_SEPARATOR . (PHP_OS_FAMILY === 'Windows' ? 'php-cgi.exe' : 'php-cgi');
+        $body = $json === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
         $env = array_merge($this->env(), [
             'REQUEST_METHOD' => $method,
             'REQUEST_URI' => $uri,
@@ -41,8 +42,11 @@ final class HttpTestApp
             'REDIRECT_STATUS' => '200',
             'GATEWAY_INTERFACE' => 'CGI/1.1',
             'SERVER_PROTOCOL' => 'HTTP/1.1',
+        ], $body === '' ? [] : [
+            'CONTENT_TYPE' => 'application/json',
+            'CONTENT_LENGTH' => (string) strlen($body),
         ], $env);
-        [$code, $out] = $this->run([$cgi, '-q'], $env);
+        [$code, $out] = $this->run([$cgi, '-q'], $env, $body);
         [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
         $status = 200;
         if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
@@ -113,6 +117,12 @@ final class HttpTestApp
         $this->pdo()->prepare('INSERT INTO `permission_user_roles` (`user_uuid`, `role_id`) SELECT ?, `id` FROM `permission_roles` WHERE `role_key` = ?')->execute([$publicUserId, $roleKey]);
     }
 
+    /** Gibt einem Konto ein einzelnes Recht direkt (Testaufbau, nicht der fachliche Weg). */
+    public function grantPermission(string $publicUserId, string $permission): void
+    {
+        $this->pdo()->prepare("INSERT INTO `permission_user_overrides` (`user_uuid`, `permission`, `mode`) VALUES (?, ?, 'added')")->execute([$publicUserId, $permission]);
+    }
+
     /** Setzt die Migrationen dieser Rechte-Grundlage zurueck und fuehrt sie erneut aus (Wiederholbarkeit). */
     public function rerunMigrations(string ...$files): void
     {
@@ -163,10 +173,12 @@ final class HttpTestApp
     }
 
     /** @return array{int,string} */
-    private function run(array $cmd, array $env): array
+    private function run(array $cmd, array $env, string $stdin = ''): array
     {
         $full = array_merge(getenv(), $env);
-        $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->root, $full);
+        $p = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->root, $full);
+        fwrite($pipes[0], $stdin);
+        fclose($pipes[0]);
         $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
         return [proc_close($p), $out];
     }

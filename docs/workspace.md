@@ -55,6 +55,20 @@ php bin/invite-first-admin.php --email=admin@schule.example [--login-name=name] 
 
 Tests: HTTP und CLI laufen gegen den **Auth-Stub** (`tests/Support/AuthStub.php`, `php -S` an der Netzwerkgrenze, über `AUTH_SERVICE_URL` erreichbar). Er prüft die Signatur wie der echte Dienst, zeichnet Aufrufe auf (`calls()`, `inviteCalls()`) und antwortet nach Skript (`script('invite', ['status' => 500])`, `['delay' => 1.5]` für Timeouts, `['body' => [...]]` für `already_active`, `username`, `invite_code`). `AuthStub::env()` liefert die Umgebung für `HttpTestApp::cli()`. E2E gegen eine echte Wegwerf-Instanz: `AUTH_SERVICE_PATH=... tests/e2e/first-admin-invite.sh`.
 
+## Konten im Web (Ticket #26)
+
+Schuladmins (Recht `accounts.view` bzw. `accounts.invite`, nicht die Rolle) verwalten Einladungen über die API; alle Endpunkte brauchen ein gültiges Token. Fehler mit Code antworten als `{"error": "...", "code": "..."}` (zentral im `ApiRouter`, nicht pro Endpunkt).
+
+| Endpunkt | Recht | Antwort |
+|---|---|---|
+| `GET /api/accounts` | `accounts.view` | `200 {"accounts": [{id, email, login_name, status, invited_at}]}` (`invited_at` ISO 8601 UTC oder `null`) |
+| `POST /api/accounts/invitations` `{email, login_name?}` | `accounts.invite` | `201 {"account": {...}, "invite_code": null}` |
+| `POST /api/accounts/{id}/reinvite` | `accounts.invite` | `200`, gleiche Form; `{id}` ist die `public_user_id` |
+
+- Codes: `403 forbidden`; `400 email_required`/`invalid_email`/`invalid_username`; `404 account_not_found`; `409 already_active`/`account_inactive`/`username_taken`/`email_taken`; `502 auth_unavailable` (nichts wird lokal angelegt, Wiederholung ist gefahrlos).
+- Die E-Mail eines noch nicht angenommenen Kontos erneut einzuladen ist eine erneute Einladung desselben Kontos (`account.reinvited`); mit anderem Anmeldenamen als gespeichert ergibt es `email_taken`.
+- Audit-Eintrag (`account.invited`/`account.reinvited`) mit Akteur `account` und dem einladenden Konto, ohne E-Mail. `invite_code` reicht die API nur aus dem Ergebnis des Anmeldedienstes durch (Einladung ohne E-Mail, Ticket #28) und speichert ihn nicht.
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)

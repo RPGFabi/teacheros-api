@@ -26,6 +26,34 @@ final class AccountRepository
         return $this->findOne('`login_name` = :v', $loginName);
     }
 
+    /**
+     * Alle Konten fuer die Kontenliste, aelteste zuerst. `invited_at` als ISO-8601 (UTC) oder null.
+     *
+     * @return list<array{id:string,email:?string,login_name:string,status:string,invited_at:?string}>
+     */
+    public function listAll(): array
+    {
+        $rows = DB::getInstance()->query(
+            'SELECT `public_user_id`, `email`, `login_name`, `status`, UNIX_TIMESTAMP(`invited_at`) AS invited_ts FROM `accounts` ORDER BY `id`'
+        )->fetchAll();
+        return array_map(static fn (array $r) => [
+            'id' => $r['public_user_id'],
+            'email' => $r['email'],
+            'login_name' => $r['login_name'],
+            'status' => $r['status'],
+            'invited_at' => $r['invited_ts'] === null ? null : gmdate('c', (int) $r['invited_ts']),
+        ], $rows);
+    }
+
+    /** "Eingeladen am" eines Kontos als ISO-8601 (UTC) oder null. */
+    public function invitedAt(string $publicUserId): ?string
+    {
+        $stmt = DB::getInstance()->prepare('SELECT UNIX_TIMESTAMP(`invited_at`) FROM `accounts` WHERE `public_user_id` = :id');
+        $stmt->execute(['id' => $publicUserId]);
+        $ts = $stmt->fetchColumn();
+        return $ts === false || $ts === null ? null : gmdate('c', (int) $ts);
+    }
+
     /** Legt ein Konto an. Ohne Anmeldenamen gilt die E-Mail, sonst die public_user_id (Entwickler-Skript). */
     public function create(string $publicUserId, string $status = 'invited', ?string $email = null, ?string $loginName = null): void
     {

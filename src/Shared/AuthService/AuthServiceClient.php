@@ -23,7 +23,8 @@ final class AuthServiceClient
      * kann ab G6 `username` und bei Einladung ohne E-Mail einmalig `invite_code` enthalten.
      *
      * @throws AuthServiceUnavailableException bei Ausfall, Timeout, 5xx oder unerwarteter Antwort
-     * @throws CodedException `username_taken` (409), wenn der Anmeldedienst den Namen schon vergeben hat
+     * @throws CodedException `username_taken` (409), wenn der Anmeldedienst den Namen schon vergeben hat,
+     *                        `invalid_username` (400), wenn er ihn nicht annimmt
      */
     public function invite(?string $email, ?string $username): InviteResult
     {
@@ -39,6 +40,9 @@ final class AuthServiceClient
 
         if ($status === 409 && ($json['code'] ?? null) === 'username_taken') {
             throw new CodedException('username_taken', 409, 'Der Anmeldename ist schon vergeben.');
+        }
+        if ($status === 400 && ($json['code'] ?? null) === 'invalid_username') {
+            throw new CodedException('invalid_username', 400, 'Der Anmeldename ist ungueltig.');
         }
         $id = $json['public_user_id'] ?? null;
         if ($status !== 200 || !is_string($id) || $id === '') {
