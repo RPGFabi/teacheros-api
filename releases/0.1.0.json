@@ -1,0 +1,10 @@
+{
+  "version": "0.1.0",
+  "milestone": "M0",
+  "status": "draft",
+  "components": {
+    "auth": "v1.2.0",
+    "api": null,
+    "web": null
+  }
+}
