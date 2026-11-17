@@ -151,6 +151,21 @@ Höchstens 200 IDs pro Aufruf. `required: false` setzt `mfa_required_at = NULL`.
 - Erneutes Einladen macht das alte Token ungültig.
 - Ein aktives Konto erhält keine Mail.
 
+### G6 – Anmeldename und Einladung ohne E-Mail (Nachtrag, Ticket #10)
+
+**Anlass:** Schüler/innen haben oft keine E-Mail-Adresse und melden sich mit einem Anmeldenamen an (GLOSSARY „Anmeldename“). Bisher meldet `/login` nur per E-Mail an, `credentials.email` ist Pflicht und `users.username` ist ein nicht eindeutiger Anzeigename.
+
+**Entscheidung:** Der vorhandene `users.username` **ist** der Anmeldename. Wir führen keine eigene Spalte ein, weil Anzeige- und Anmeldename gleich sein sollen und `username` heute nur beim Anlegen gesetzt wird (Standard: die E-Mail).
+- **Schalter pro Instanz:** `USERNAME_LOGIN_ENABLED` (Standard `false`). EAW bleibt bei der Anmeldung per E-Mail, TeacherOS-Instanzen setzen ihn (`scripts/auth-instance.sh`).
+- **Eindeutigkeit:** Migration 0005 legt einen UNIQUE-Index auf `users.username` an (ohne Groß-/Kleinschreibung über die `_ci`-Collation). Bei vorhandenen Duplikaten lässt sie den Index aus und warnt. Bei eingeschaltetem Schalter ohne Index antwortet die Instanz mit 500 (fail-closed).
+- **Regeln:** Ein frei vergebener Anmeldename hat 3–64 Zeichen aus `a-z 0-9 . _ -` und kein `@`. Ein `@` ist nur erlaubt, wenn der Name gleich der eigenen E-Mail ist.
+- **Login:** `POST /login` liest die Kennung aus `login` oder, wie bisher, aus `email`. Mit `@` wird per E-Mail gesucht, sonst per `username` (nur bei eingeschaltetem Schalter). Antwort und Laufzeit bei unbekannter Kennung sind unverändert.
+- **E-Mail optional:** `credentials.email` wird nullbar. Mail-Wege (Passwort-Reset, Benachrichtigungen) behandeln ein Konto ohne Mail wie eine unbekannte Adresse. `changeEmail` darf eine Mail ergänzen. Die Registrierung verlangt weiter eine Mail.
+- **Einladung:** `{"event":"user.invite","email":"optional","username":"optional"}`, mindestens eins von beiden. Ohne `username` ist er die E-Mail. Ist der Anmeldename vergeben, kommt `409 {"code":"username_taken"}`. Ohne E-Mail wird keine Mail versendet, und die Antwort enthält einmalig `invite_code` (Crockford-Base32, etwa 60 Bit, gruppiert). Gespeichert wird nur der Hash, die Gültigkeit entspricht `INVITE_TOKEN_DURATION_HRS`, und erneutes Einladen macht den alten Code ungültig.
+- **Annahme:** `POST /acceptInvite` nimmt `{token | code, password}` an, mit derselben Rate-Limit-Regel wie bisher.
+
+**Bewusst nicht Teil von G6:** Sammel-Einladung für ganze Klassen und Passwort-Reset durch die Schule ohne E-Mail. Für beide gibt es eigene Issues.
+
 ### Nicht Teil der Erweiterung (bewusst)
 
 - **Notfall-Recovery-Zugang für Administratoren** (17.9): Er gehört zur Control Plane und zu B4, nicht in den Auth-Dienst. Technisch ist er eine G5-Einladung an eine dokumentierte Person, ausgelöst durch die Zentrale mit Begründung und Audit.
@@ -208,6 +223,7 @@ Der `AccessAdministration`-Service ist der **einzige** Weg zu `UserPermissionSer
 
 **Invarianten** (Verstoß ergibt 403 bzw. 409):
 - **P2 – keine Selbsterweiterung:** Ohne Wildcard-Admin-Rolle kann niemand sich selbst Rollen oder Rechte geben. Niemand kann anderen Rechte geben, die er selbst nicht hat. Admins dürfen sich über Rollen Rechte zuweisen (17.9).
+- **P6 – exklusive Schülerrolle (Nachtrag, Ticket #10):** Ein Konto mit der Rolle Schüler/in hat keine weitere Rolle und keine Einzelrechte (keine Overrides); die Rechte der Schülerrolle selbst sind nicht über die Rechteverwaltung änderbar. Verstoß ergibt 409 `{"code": "student_role_exclusive"}`. Durchgesetzt im `AccessAdministration`-Service.
 - **P3 – letzter Admin:** Entzieht eine Aktion dem letzten **aktiven** Konto die Schuladmin-Rolle oder deaktiviert sie es, wird sie mit `409 {"code": "last_admin"}` abgelehnt. Die Prüfung läuft in derselben Transaktion mit `SELECT ... FOR UPDATE`.
 
 **Pflichttests:**
