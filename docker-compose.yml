@@ -1,0 +1,26 @@
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: teacheros-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: teacheros
+      MARIADB_USER: teacheros
+      MARIADB_PASSWORD: teacheros
+      MARIADB_ROOT_PASSWORD: teacheros-root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  # Redis nur bei tatsaechlichem Bedarf (Source of Truth 4.1); Default: DB-Outbox + Worker.
+  redis:
+    image: redis:7-alpine
+    container_name: teacheros-redis
+    restart: unless-stopped
+    profiles: ["optional"]
+    ports:
+      - "6379:6379"
+
+volumes:
+  mariadb_data:

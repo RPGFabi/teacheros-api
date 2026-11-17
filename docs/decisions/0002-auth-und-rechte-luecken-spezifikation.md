@@ -1,0 +1,269 @@
+# ADR 0002 – Spezifikation der Auth- und Rechte-Lücken
+
+**Status:** Angenommen (2026-11-17)
+**Bezug:** ADR 0001, Source of Truth 17.9, 17.12, 17.14 Nr. 1/2/8
+**Geltung:** Teil A ändert das Repository `jwt-authservice`. Teil B wird im TeacherOS-Backend (`Shared/Security`) gebaut.
+
+## Grundsatz: eine Auth-Instanz pro Schule (F1 entschieden)
+
+Jede Schulinstanz erhält eine eigene `jwt-authservice`-Instanz mit:
+
+- eigener Datenbank,
+- eigenem RS256-Schlüsselpaar,
+- eigenem `TOKEN_ISSUER` (`https://auth.<schul-subdomain>`) und `TOKEN_AUDIENCE` (`teacheros:<schul-slug>`),
+- `REGISTRATION_DISABLED=true`, weil Konten nur über Einladung entstehen (G5).
+
+Das Backend prüft `iss`, `aud` und die Signatur mit dem öffentlichen Schlüssel **seiner** Schule. Ein Token von Schule A scheitert an Schule B also schon an der Signatur, nicht erst an `aud`. Das ist die doppelte Absicherung für 17.14 Nr. 1. Dieselbe E-Mail-Adresse an zwei Schulen ergibt zwei unabhängige Konten mit je eigenem TOTP.
+
+Die Provisionierung (Schlüssel erzeugen, Instanz anlegen, Migration ausführen) übernimmt später die Control Plane. Bis dahin genügt ein Skript in `scripts/`.
+
+## Gemeinsame Regeln für alle neuen internen Endpunkte (Teil A)
+
+- Gleiches Signaturverfahren wie `/internal/users/delete`: `X-Internal-Timestamp`, `X-Internal-Nonce` und HMAC-Header mit `AUTH_SERVER_WEBHOOK_SECRET`, dazu Replay-Schutz.
+- Der Body enthält immer `event`. Ein falsches `event` führt zu 400.
+- `public_user_id` muss eine UUID sein. Ein unbekanntes Konto führt zu 404 `{"error", "code": "user_not_found"}`. Ausnahme ist G5.
+- Alle Endpunkte sind **idempotent**. Ein wiederholter Aufruf ändert den Zustand nicht weiter und liefert 200.
+- **Wer** eine Aktion auslösen darf, prüft und protokolliert ausschließlich das TeacherOS-Backend (Permission und Audit). Der Auth-Dienst vertraut der Signatur, prüft aber keine Fachrollen.
+- Jede Aktion steht im CHANGELOG, wird als SemVer-Minor-Version veröffentlicht und braucht PHPUnit-Tests nach dem bestehenden Muster in `tests/`.
+- Bestehende Aufrufer (EAW-Shop) verhalten sich unverändert. Neue Felder sind optional und haben abwärtskompatible Defaults.
+
+---
+
+## Teil A – Erweiterungen in `jwt-authservice`
+
+### G1 – TOTP durch die Verwaltung zurücksetzen
+
+**Anlass:** Eine Lehrkraft hat ihr Gerät und ihre Recovery-Codes verloren (17.9: „verwaltetes TOTP-Reset“).
+
+`POST /internal/users/mfa-reset`
+```json
+{ "event": "user.mfa_reset", "public_user_id": "<uuid>" }
+```
+**Wirkung (in einer Transaktion):**
+1. `mfa_secret`, `mfa_enabled_at` und `mfa_last_used_slot` werden auf `NULL` gesetzt, `mfa_failed_attempts` auf `0`, `mfa_locked_until` auf `NULL`.
+2. Alle offenen Recovery-Codes gelten als verbraucht (`used_at = NOW()`).
+3. Alle vertrauenswürdigen Geräte werden widerrufen.
+4. Alle Refresh-Tokens werden widerrufen (`revokeAllRefreshTokens`).
+5. Eine Sicherheitsmail geht über die Queue an das Konto. Dafür wird der bestehende Vorlagenmechanismus `safeMfaMail` mit dem Ereignis `reset_by_admin` erweitert.
+
+**Antwort:** `200 {"ok": true, "public_user_id": "...", "mfa_was_enabled": bool}`
+
+**Folge:** Ist für das Konto `mfa_required` gesetzt (G2), muss es bei der nächsten Anmeldung TOTP neu einrichten.
+
+**Tests:**
+- Nach dem Reset ist der Login ohne TOTP-Challenge möglich.
+- Alte Recovery-Codes funktionieren nicht mehr.
+- Eine alte Refresh-Session liefert 401.
+- Ein zweiter Aufruf liefert 200 mit `mfa_was_enabled=false`.
+
+### G2 – MFA-Pflicht pro Konto absichern
+
+**Anlass:** TOTP ist für Mitarbeitende und die Administration Pflicht, für Eltern und SuS optional (17.9).
+
+**Aufteilung:**
+- Das TeacherOS-Backend **erzwingt** die Pflicht (siehe B3).
+- Der Auth-Dienst verhindert nur, dass ein Pflichtkonto seinen Schutz selbst wieder abbaut.
+
+**Migration `0004_mfa_required.php`:** `users.mfa_required_at DATETIME NULL`.
+
+`POST /internal/users/mfa-requirement`
+```json
+{ "event": "user.mfa_requirement", "public_user_ids": ["<uuid>", "..."], "required": true }
+```
+Höchstens 200 IDs pro Aufruf. `required: false` setzt `mfa_required_at = NULL`.
+
+**Verhalten bei `mfa_required_at IS NOT NULL`:**
+- `DELETE /mfa` antwortet mit `403 {"code": "mfa_required"}`. TOTP lässt sich nur noch über G1 entfernen.
+- Vertrauenswürdige Geräte überspringen die TOTP-Challenge **nicht**. Die neue Konfiguration `MFA_TRUSTED_DEVICE_FOR_REQUIRED` steht standardmäßig auf `false`. In der Login-Logik wird `trustedDevices->consume()` für solche Konten übersprungen.
+- `GET /mfa` liefert zusätzlich `"required": true`, damit das Frontend die Einrichtung anstoßen kann.
+
+**Tests:**
+- Ein Pflichtkonto kann MFA nicht selbst deaktivieren.
+- Ein vertrauenswürdiges Gerät führt bei einem Pflichtkonto trotzdem zur Challenge.
+- Ein Konto ohne Pflicht verhält sich wie bisher (Regressionstest für EAW).
+
+### G3 – Sitzungen gezielt widerrufen, ohne den Login zu sperren
+
+**Anlass:** „Dauerhafter Session-Widerruf“ (17.9), etwa bei einem verlorenen Gerät oder einer Rechteänderung, nach der sich jemand neu anmelden soll. Bisher gibt es das nur zusammen mit einer Login-Sperre oder einem Passwort-Reset.
+
+`POST /internal/users/revoke-sessions`
+```json
+{ "event": "user.revoke_sessions", "public_user_ids": ["<uuid>"], "include_trusted_devices": true }
+```
+**Wirkung:**
+- Alle Refresh-Tokens werden widerrufen.
+- Bei `include_trusted_devices` (Default `true`) werden auch die vertrauenswürdigen Geräte widerrufen.
+- Login, Passwort und MFA bleiben unverändert.
+
+**Antwort:** `200 {"ok": true, "affected": int}`
+
+**Grenze:** Bereits ausgestellte Access-Tokens bleiben bis zu ihrem `exp` gültig (höchstens `TOKEN_REPLAYTIME`, 900 s). Das Backend schließt dieses Fenster sofort über B2.
+
+**Test:** Nach dem Widerruf liefert `/refresh` 401, ein neuer Login gelingt.
+
+### G4 – Login sperren mit Grund und wieder freigeben
+
+**Anlass:** Deaktivierung und Reaktivierung, etwa bei Austritt und Rückkehr (CORE-08, 17.9). Bisher speichert `disable-login` fest den Grund `self_deleted`, und eine Reaktivierung fehlt.
+
+**G4a – Grund übergeben:** `POST /internal/users/disable-login` erhält das optionale Feld `reason`. Erlaubt sind `self_deleted` (bleibt Default, damit EAW unverändert funktioniert), `left_school`, `admin_locked` und `security_lock`. Andere Werte führen zu 400.
+
+**G4b – Reaktivierung:** `POST /internal/users/enable-login`
+```json
+{ "event": "user.enable_login", "public_user_id": "<uuid>" }
+```
+**Wirkung:**
+- `is_active = 1`, `disabled_at`, `disabled_reason` und `disabled_by` werden auf `NULL` gesetzt.
+- Es werden keine Sitzungen wiederhergestellt, und MFA bleibt unverändert.
+- Bei `confirmed_email = 0` antwortet der Dienst mit `409 {"code": "email_unconfirmed"}`.
+- Bei `disabled_reason = self_deleted` antwortet er mit `409 {"code": "self_deleted"}`, weil eine Selbstlöschung nicht durch die Verwaltung rückgängig gemacht werden darf.
+
+**Tests:**
+- Sperren und Freigeben im Wechsel, danach ist der Login wieder möglich.
+- Bei einer Selbstlöschung lehnt `enable-login` ab.
+- `disable-login` ohne `reason` speichert weiterhin `self_deleted`.
+
+### G5 – Konten per Einladung anlegen
+
+**Anlass:** „Initialer Admin durch Einladung an definierte E-Mail“ (17.9). Auch Lehrkräfte und Eltern entstehen so, weil die Registrierung pro Schule abgeschaltet ist. Bisher gibt es nur `bin/create-user.php`, das ein Klartext-Passwort verlangt.
+
+`POST /internal/users/invite`
+```json
+{ "event": "user.invite", "email": "...", "username": "optional" }
+```
+**Wirkung bei neuer Adresse:**
+- Es entstehen `credentials` und `users` mit einem nicht benutzbaren Zufalls-Passworthash, `confirmed_email = 0` und `is_active = 0`.
+- Ein Einladungstoken wird gehasht gespeichert. Der Mechanismus des erzwungenen Resets wird wiederverwendet, das Token ist `INVITE_TOKEN_DURATION_HRS` gültig (Default 72).
+- Die Mail `auth_invite` geht über die Queue, mit einem Link auf `<FRONTEND>/einladung?token=...`.
+
+**Wirkung bei bestehender, noch nicht angenommener Einladung:** Es wird ein neues Token erzeugt, das alte ist ungültig, und die Mail wird erneut versendet (erneutes Einladen).
+
+**Wirkung bei bestehendem aktivem Konto:** Es wird keine Mail versendet. Die Antwort enthält `created: false, already_active: true`.
+
+**Antwort:** `200 {"ok": true, "public_user_id": "...", "created": bool, "already_active": bool}`. Eine Kontoenumeration ist hier kein Risiko, weil der Endpunkt nur intern und signiert erreichbar ist.
+
+**Annahme der Einladung:** Der neue Endpunkt `POST /acceptInvite` erwartet `{token, password}` mit Rate-Limit-Regel `reset_password`. Er prüft das Passwort mit der bestehenden `validatePassword`-Regel und setzt dann in einer Transaktion `confirmed_email = 1`, `is_active = 1` und den Passworthash. Das Token wird verbraucht. Die Antwort enthält kein Access-Token, die Person meldet sich danach normal an und richtet bei einer Pflicht TOTP ein.
+
+**Tests:**
+- Einladen, Annehmen und Login funktionieren durchgängig.
+- Ein abgelaufenes oder schon verwendetes Token führt zu 400.
+- Erneutes Einladen macht das alte Token ungültig.
+- Ein aktives Konto erhält keine Mail.
+
+### Nicht Teil der Erweiterung (bewusst)
+
+- **Notfall-Recovery-Zugang für Administratoren** (17.9): Er gehört zur Control Plane und zu B4, nicht in den Auth-Dienst. Technisch ist er eine G5-Einladung an eine dokumentierte Person, ausgelöst durch die Zentrale mit Begründung und Audit.
+- **Passkeys und SSO:** SPÄTER (17.9).
+
+---
+
+## Teil B – Durchsetzung im TeacherOS-Backend
+
+Alles liegt in `src/Shared/Security`. Die Pflichttests laufen gegen eine echte MariaDB.
+
+### B1 – `isInactive` bei jedem geschützten Request
+
+Die lokale Tabelle `accounts` enthält `public_user_id` (eindeutig), `status` (`invited`, `active` oder `inactive`), `inactive_since`, `sessions_valid_after` und `mfa_required`. Eine `AuthenticationMiddleware` arbeitet in dieser Reihenfolge:
+
+1. Sie prüft das JWT lokal: RS256, `typ=access`, `iss`, `aud` und `exp`.
+2. Sie lädt `accounts` über `sub`. Fehlt der Eintrag, folgt 401.
+3. Bei `status != active` folgt `401 {"code": "account_inactive"}`, auch wenn das Token noch gültig ist.
+
+Es gibt **keinen** Cache über den Request hinaus (17.9).
+
+**Pflichttest:** Ein Konto mit gültigem Token wird deaktiviert, der nächste Request liefert 401.
+
+### B2 – Sofortige Wirkung von Sitzungswiderruf und Rechteänderungen
+
+Tokens mit `iat < accounts.sessions_valid_after` werden mit `401 {"code": "session_revoked"}` abgelehnt. Das Backend setzt das Feld bei:
+
+- Widerruf (zusammen mit G3),
+- Deaktivierung (zusammen mit G4a),
+- TOTP-Reset (zusammen mit G1).
+
+Normale Rechte- und Elternrechteänderungen brauchen das **nicht**, weil Rechte bei jedem Request frisch aus der Datenbank kommen (17.9: „sofort bei neuen API-Anfragen“).
+
+**Reihenfolge bei kombinierten Aktionen:** Zuerst wird lokal `sessions_valid_after` gesetzt, danach der Auth-Dienst aufgerufen. Schlägt der Aufruf fehl, bleibt der lokale Schutz bestehen. Ein Outbox-Job wiederholt den Aufruf idempotent.
+
+**Pflichttest:** Nach dem Widerruf liefert das alte Token sofort 401.
+
+### B3 – MFA-Pflicht erzwingen
+
+Für Konten mit `mfa_required = true` (Rollen mit dem Merkmal `requires_mfa`, also alle Mitarbeitenden- und Admin-Rollen) wird ein Token mit `usedMFA = false` bei fachlichen Routen mit `403 {"code": "mfa_enrollment_required"}` abgelehnt.
+
+Erlaubt bleiben nur `GET /api/me` und die Routen, die das Frontend zur Einrichtung über den Auth-Dienst braucht. Das Flag wird über G2 an den Auth-Dienst gespiegelt.
+
+**Pflichttest:** Eine Lehrkraft ohne TOTP erhält 403, nach der Einrichtung und erneutem Login hat sie Zugriff.
+
+### B4 – Rechteverwaltung über `PHP-Permissions` (P1–P3)
+
+Der `AccessAdministration`-Service ist der **einzige** Weg zu `UserPermissionService::createRole/updateRole/deleteRole/setUserAccess`. Er führt zu jeder Aktion einen Audit-Eintrag.
+
+| Aktion | benötigte Permission |
+|---|---|
+| Rolle anlegen, ändern oder löschen | `roles.manage` |
+| Rolle einem Konto zuweisen oder entziehen | `roles.assign` |
+| Einzelrechte hinzufügen oder entfernen | `permissions.assign` |
+
+**Invarianten** (Verstoß ergibt 403 bzw. 409):
+- **P2 – keine Selbsterweiterung:** Ohne Wildcard-Admin-Rolle kann niemand sich selbst Rollen oder Rechte geben. Niemand kann anderen Rechte geben, die er selbst nicht hat. Admins dürfen sich über Rollen Rechte zuweisen (17.9).
+- **P3 – letzter Admin:** Entzieht eine Aktion dem letzten **aktiven** Konto die Schuladmin-Rolle oder deaktiviert sie es, wird sie mit `409 {"code": "last_admin"}` abgelehnt. Die Prüfung läuft in derselben Transaktion mit `SELECT ... FOR UPDATE`.
+
+**Pflichttests:**
+- Ein Verwalter mit nur `roles.assign` kann keine Rolle ändern.
+- Ein Verwalter kann sich selbst kein Recht geben.
+- Der letzte Admin kann nicht entfernt werden, auch nicht bei zwei gleichzeitigen Requests.
+
+### B5 – Modulfreigabe getrennt von Rechten
+
+`ModuleGate::require('observation')` prüft die lokal gespeicherte Modulfreigabe der Instanz und läuft **vor** der Permission-Prüfung. Ein inaktives Modul führt zu `403 {"code": "module_disabled"}`.
+
+Eine Modulfreigabe gewährt selbst keinen Zugriff auf Objekte (17.12). Die Freigaben liegen lokal, damit ein Ausfall der Control Plane den Betrieb nicht stoppt.
+
+### B6 – Objekt-, Zeit- und Zuordnungs-Scopes (P4)
+
+Das Interface `AccessPolicy` hat eine Implementierung pro Fachmodul:
+```php
+interface AccessPolicy {
+    /** @return bool Darf $user die Aktion $action auf $resource zum Zeitpunkt $at ausführen? */
+    public function allows(CurrentUser $user, string $action, ResourceRef $resource, \DateTimeImmutable $at): bool;
+}
+```
+**Reihenfolge der Prüfung:**
+1. `ModuleGate`
+2. `UserPermissionService::can()` (die grobe Frage)
+3. `AccessPolicy::allows()` (die Objektfrage)
+
+Alle drei müssen zustimmen. Policies lesen nur Zuordnungen, die zum Zeitpunkt `$at` gültig sind: Unterrichtszuordnung, Klassenleitung, Vertretung **je Unterrichtsstunde** und Elternrecht je Kind mit `valid_from` und `valid_until`. Wildcard-Rechte heben eine Policy-Ablehnung **nicht** auf.
+
+**Pflichttests:**
+- Nach dem Ende einer Zuordnung ist kein Zugriff mehr möglich.
+- Eine Vertretungslehrkraft sieht nur ihre Stunde und nicht das Notenbuch (17.14 Nr. 4).
+- Ein abgelaufenes Elternrecht führt zu 403.
+
+### B7 – ICE-Sperre (P5, sicherheitskritisch)
+
+Private ICE-Rohdaten sind **ausschließlich** über ein `IceObservationRepository` erreichbar. Jede Abfrage enthält zwingend die Bedingung `author_account_id = :current_account`, ohne Parameter, der sie abschaltet.
+
+- Es gibt keine Permission `ice.read_all` und keinen Support- oder Export-Pfad.
+- Schulweite Exporte und Statistiken verwenden eine eigene Lesesicht, die die ICE-Tabellen nicht einbindet.
+- Der Wildcard `*` hat hier keine Wirkung, weil die Prüfung an der Autorenschaft hängt und nicht an einer Permission.
+
+**Pflichttests (17.14 Nr. 2):**
+- Ein Schuladmin mit `*` liest fremde ICE-Daten nicht: Er erhält eine leere Liste bzw. 404.
+- Ein Supporttoken liest fremde ICE-Daten nicht.
+- Der schulweite Export enthält keine ICE-Daten.
+
+---
+
+## Reihenfolge
+
+1. **B1, B2, B4, B5, B7** im Backend. Sie blockieren nichts, weil sie ohne Änderungen am Auth-Dienst testbar sind (Auth-Aufrufe hinter dem Interface `AuthServiceClient` mit einem Fake im Test).
+2. **G5 und G4** im Auth-Dienst, weil sie für das erste echte Konto nötig sind.
+3. **G3, G1 und G2**, danach B3 scharf schalten.
+4. **B6**, sobald die ersten Fachzuordnungen (Fachgruppe, Klassenleitung) existieren.
+
+## Risiken
+
+- **Zeitfenster bei Access-Tokens:** Ohne B2 bleibt ein widerrufenes Token bis zu 15 Minuten gültig. B2 ist deshalb Pflicht und nicht optional.
+- **Doppelte Kontoführung** (`accounts` lokal und `users` im Auth-Dienst): Maßgeblich für den Status ist das Backend. Der Auth-Dienst spiegelt den Status, damit kein neuer Login möglich ist. Ein Abgleichsjob meldet Abweichungen, korrigiert sie aber nicht stillschweigend.
+- **Änderungen am Auth-Dienst betreffen den EAW-Shop:** Alle Felder haben abwärtskompatible Defaults und Regressionstests sind Pflicht.
