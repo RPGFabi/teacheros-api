@@ -12,6 +12,7 @@ use Hoelzle\Core\Http\CorsHandler;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use Hoelzle\Core\Routing\Router;
+use TeacherOS\Shared\Security\AuthenticationMiddleware;
 
 final class AppBootstrap
 {
@@ -42,6 +43,23 @@ final class AppBootstrap
     private static function registerRoutes(Router $router): void
     {
         $router->get('/api/health', [self::class, 'health']);
+        $router->get('/api/me', [self::class, 'me'], [[AuthenticationMiddleware::class, 'handle']]);
+    }
+
+    public static function me(Request $request, Response $response): void
+    {
+        $session = AuthenticationMiddleware::current();
+        $response->json([
+            'account' => [
+                'id' => $session->account->publicUserId,
+                'status' => $session->account->status,
+                'mfa_required' => $session->account->mfaRequired,
+            ],
+            'session' => [
+                'used_mfa' => $session->token->usedMfa,
+                'expires_at' => gmdate('c', $session->token->expiresAt),
+            ],
+        ]);
     }
 
     public static function health(Request $request, Response $response): void

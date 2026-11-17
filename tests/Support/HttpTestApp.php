@@ -87,7 +87,31 @@ final class HttpTestApp
             'DB_USER' => getenv('TEST_DB_USER') ?: 'teacheros',
             'DB_PASSWORD' => getenv('TEST_DB_PASSWORD') ?: 'teacheros',
             'DB_NAME' => $this->dbName,
+            'AUTH_PUBLIC_KEY_PATH' => TestTokens::publicKeyPath(),
+            'AUTH_TOKEN_ISSUER' => TestTokens::ISSUER,
+            'AUTH_TOKEN_AUDIENCE' => TestTokens::AUDIENCE,
         ];
+    }
+
+    public function pdo(): \PDO
+    {
+        $e = $this->env();
+        return new \PDO("mysql:host={$e['DB_HOST']};port={$e['DB_PORT']};dbname={$this->dbName}", $e['DB_USER'], $e['DB_PASSWORD'], [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+    }
+
+    public function resetAccounts(): void
+    {
+        $this->pdo()->exec('DELETE FROM `accounts`');
+    }
+
+    public function createAccount(string $publicUserId, string $status = 'active'): void
+    {
+        $this->pdo()->prepare('INSERT INTO `accounts` (`public_user_id`, `status`) VALUES (?, ?)')->execute([$publicUserId, $status]);
+    }
+
+    public function setAccountStatus(string $publicUserId, string $status): void
+    {
+        $this->pdo()->prepare('UPDATE `accounts` SET `status` = ? WHERE `public_user_id` = ?')->execute([$status, $publicUserId]);
     }
 
     /** @return array{int,string} */
