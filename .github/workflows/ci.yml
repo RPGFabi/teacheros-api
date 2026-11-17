@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "integration/**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      TEST_DB_HOST: 127.0.0.1
+      TEST_DB_PORT: "3306"
+      TEST_DB_USER: root
+      TEST_DB_PASSWORD: root
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo_mysql, mbstring
+          tools: composer
+      - run: composer install --no-interaction --prefer-dist
+      - name: Syntaxpruefung
+        run: find src public setup tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+      - run: vendor/bin/phpunit
