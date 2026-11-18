@@ -436,4 +436,34 @@ final class RoleManagementTest extends TestCase
         $this->assertSame('role_protected', $r['json']['code']);
         $this->assertSame($role, $this->roleByKey($key));
     }
+
+    /** Eine Rolle ohne Zeile in `role_settings` (darf es nicht geben); gibt ihre ID zurueck. */
+    private function roleWithoutSettings(): string
+    {
+        $id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+        $this->app->pdo()->exec("INSERT INTO `permission_roles` (`id`, `role_key`, `name`, `is_system`) VALUES ('$id', 'r_ohne', 'Ohne Merkmale', 0)");
+        return $id;
+    }
+
+    public function testRolleOhneMerkmaleWirdNichtStillschweigendAlsEigeneRolleMitMfaBehandelt(): void
+    {
+        $id = $this->roleWithoutSettings();
+
+        $update = $this->call('POST', "/api/roles/$id/update", ['name' => 'Umbenannt', 'requires_mfa' => false]);
+        $delete = $this->call('POST', "/api/roles/$id/delete");
+
+        $this->assertSame(500, $update['status']);
+        $this->assertSame(500, $delete['status']);
+        $this->assertSame('Ohne Merkmale', $this->app->pdo()->query("SELECT `name` FROM `permission_roles` WHERE `id` = '$id'")->fetchColumn(), 'unveraendert');
+        $this->assertSame([], $this->audit('role.updated'));
+        $this->assertSame([], $this->audit('role.deleted'));
+        $this->assertSame(0, (int) $this->app->pdo()->query("SELECT COUNT(*) FROM `role_settings` WHERE `role_id` = '$id'")->fetchColumn(), 'es wird auch nichts nachgetragen');
+    }
+
+    public function testRollenlisteMeldetRolleOhneMerkmaleAlsFehlerStattSieZuRaten(): void
+    {
+        $this->roleWithoutSettings();
+
+        $this->assertSame(500, $this->call('GET', '/api/roles')['status']);
+    }
 }

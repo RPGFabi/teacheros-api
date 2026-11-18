@@ -37,13 +37,23 @@ final class RoleSettingsRepository
         return $result;
     }
 
-    /** @return array{protection:RoleProtection,requires_mfa:bool}|null */
-    public function find(string $roleId): ?array
+    /**
+     * Jede Rolle hat Merkmale (Migration 0008, {@see AccessAdministration::createRole()}). Fehlen sie, ist das ein
+     * Fehler im Bestand, kein Fall zum Raten: eine stillschweigend als "eigene Rolle mit MFA" behandelte Rolle
+     * koennte geloescht oder umgebaut werden, obwohl sie geschuetzt ist.
+     *
+     * @return array{protection:RoleProtection,requires_mfa:bool}
+     * @throws \LogicException wenn die Rolle keine Zeile in `role_settings` hat
+     */
+    public function get(string $roleId): array
     {
         $stmt = DB::getInstance()->prepare('SELECT `protection`, `requires_mfa` FROM `role_settings` WHERE `role_id` = :id');
         $stmt->execute(['id' => $roleId]);
         $row = $stmt->fetch();
-        return $row === false ? null : ['protection' => RoleProtection::from($row['protection']), 'requires_mfa' => (bool) $row['requires_mfa']];
+        if ($row === false) {
+            throw new \LogicException("Die Rolle $roleId hat keine Merkmale in role_settings.");
+        }
+        return ['protection' => RoleProtection::from($row['protection']), 'requires_mfa' => (bool) $row['requires_mfa']];
     }
 
     public function setRequiresMfa(string $roleId, bool $requiresMfa): void

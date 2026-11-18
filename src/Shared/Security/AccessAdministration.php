@@ -261,7 +261,7 @@ final class AccessAdministration
             $service = PermissionCatalog::service();
             $this->lockRole($roleId);
             $role = $service->getRole($roleId);
-            $current = $this->settings->find($roleId) ?? ['protection' => RoleProtection::Custom, 'requires_mfa' => true];
+            $current = $this->settings->get($roleId);
 
             if ($current['protection'] === RoleProtection::Wildcard || $current['protection'] === RoleProtection::Protected) {
                 throw new CodedException('role_protected', 409, 'Diese Rolle ist geschützt und lässt sich nicht bearbeiten.');
@@ -326,7 +326,7 @@ final class AccessAdministration
             // Die Sperre auf der Rollenzeile haelt auch gleichzeitige Zuweisungen (Fremdschluessel) bis zum Ende auf.
             $this->lockRole($roleId);
             $role = $service->getRole($roleId);
-            $protection = $this->settings->find($roleId)['protection'] ?? RoleProtection::Custom;
+            $protection = $this->settings->get($roleId)['protection'];
             if ($protection !== RoleProtection::Custom) {
                 throw new CodedException('role_protected', 409, 'Standardrollen lassen sich nicht löschen.');
             }

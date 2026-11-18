@@ -27,7 +27,7 @@ final class RoleOverview
         $settings = $this->settings->all();
         $roles = [];
         foreach (PermissionCatalog::service()->listRoles() as $role) {
-            $own = $settings[$role['id']] ?? ['protection' => RoleProtection::Custom, 'requires_mfa' => true];
+            $own = $settings[$role['id']] ?? throw new \LogicException("Die Rolle {$role['id']} hat keine Merkmale in role_settings.");
             $all = in_array(PermissionStore::WILDCARD_PERMISSION, $role['permissions'], true);
             $roles[] = [
                 'id' => $role['id'],
