@@ -103,7 +103,7 @@ Kontodetail und Rollenvergabe (ADR 0002 B4, Nachtrag #11). Lesen mit **einem** d
 - 409: `student_role_exclusive` (Schüler/in nur ohne weitere Rolle und Einzelrechte, und umgekehrt), `admin_overrides_forbidden` (Rolle Schuladmin an ein Konto mit Einzelrechten).
 - Vergeben einer vorhandenen und Entziehen einer nicht vorhandenen Rolle ist ein No-op ohne Audit-Eintrag (`200`).
 - Audit: `role.assigned` / `role.revoked`, Objekt = Konto, Akteur = Verwalter, Kontext `{role: <Schlüssel>, name: <Name>}`. `grantInitialAdmin` und `revokeAllRoles` berechnen `mfa_required` ebenfalls neu (`MfaRequirement::recomputeFor`: ODER über `role_settings.requires_mfa` aller Rollen; Rolle ohne Merkmale zählt als „erfordert MFA“).
-- Andockpunkte: P3 (#35) in `RoleAssignmentRules::refusal()` beim Entziehen (Kommentar im Code); Einzelrechte (#36, siehe unten) füllen die Herkünfte `individual`/`withdrawn` der Lesesicht.
+- P3 (#35, siehe unten) steht in `RoleAssignmentRules::refusal()` beim Entziehen; Einzelrechte (#36, siehe unten) füllen die Herkünfte `individual`/`withdrawn` der Lesesicht.
 
 ## Einzelrechte (Ticket #36)
 
