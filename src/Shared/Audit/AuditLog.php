@@ -25,6 +25,10 @@ final class AuditLog
     public const ROLE_UPDATED = 'role.updated';
     public const ROLE_DELETED = 'role.deleted';
 
+    public const PERMISSION_GRANTED = 'permission.granted';
+    public const PERMISSION_WITHDRAWN = 'permission.withdrawn';
+    public const PERMISSION_OVERRIDE_CLEARED = 'permission.override_cleared';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {

@@ -8,7 +8,8 @@ use TeacherOS\Shared\Exceptions\CodedException;
 
 /**
  * Lesesicht auf die Zuweisungen eines Kontos (Kontodetail): Rollen, effektive Rechte mit Herkunft und je Rolle
- * die fuer den Betrachter moegliche Aktion samt Begruendung, wenn sie gesperrt ist.
+ * die fuer den Betrachter moegliche Aktion samt Begruendung, wenn sie gesperrt ist; ebenso je Katalogrecht die
+ * moegliche Einzelrecht-Aktion (`permission_actions`, Ticket #36).
  *
  * Herkunft (`sources`) eines Rechts: `role` (mit Rolle), `individual` (Einzelrecht gewaehrt) oder `withdrawn`
  * (Einzelrecht entzogen; das Recht gilt dann nicht, `effective` ist false). Rechte ohne Herkunft fehlen.
@@ -63,6 +64,7 @@ final class AccountAccessView
             'roles' => $assigned,
             'permissions' => $this->permissions($accountId, $roles, $access),
             'role_actions' => $actions,
+            'permission_actions' => $this->permissionActions($accountId, $viewerId, $roles, $access),
         ];
     }
 
@@ -93,6 +95,38 @@ final class AccountAccessView
             if (isset($sources[$entry['key']])) {
                 $result[] = $entry + ['effective' => $effective->can($entry['key']), 'sources' => $sources[$entry['key']]];
             }
+        }
+        return $result;
+    }
+
+    /**
+     * Je Katalogrecht die eine fuer den Betrachter moegliche Einzelrecht-Aktion (Ticket #36): `clear`, wenn das
+     * Konto ein Einzelrecht (gewaehrt oder entzogen) dazu hat, sonst `withdraw`, wenn es das Recht effektiv hat,
+     * sonst `grant`. Gesperrte Aktionen nennen `code` und `reason` aus {@see PermissionOverrideRules}.
+     *
+     * @param array<string,array<string,mixed>> $roles
+     * @param array{role_ids:list<string>,overrides:array<string,string>} $access
+     * @return list<array{permission:string,name:string,group:string,action:string,allowed:bool,code:?string,reason:?string}>
+     */
+    private function permissionActions(string $accountId, ?string $viewerId, array $roles, array $access): array
+    {
+        $effective = PermissionCatalog::service()->forUser($accountId);
+        $rules = new PermissionOverrideRules($viewerId, $roles);
+        $result = [];
+        foreach (PermissionCatalog::entries() as $entry) {
+            $action = isset($access['overrides'][$entry['key']])
+                ? PermissionOverrideRules::CLEAR
+                : ($effective->can($entry['key']) ? PermissionOverrideRules::WITHDRAW : PermissionOverrideRules::GRANT);
+            $refusal = $rules->refusal($accountId, $entry['key'], $action);
+            $result[] = [
+                'permission' => $entry['key'],
+                'name' => $entry['name'],
+                'group' => $entry['group'],
+                'action' => $action,
+                'allowed' => $refusal === null,
+                'code' => $refusal?->errorCode,
+                'reason' => $refusal?->getMessage(),
+            ];
         }
         return $result;
     }

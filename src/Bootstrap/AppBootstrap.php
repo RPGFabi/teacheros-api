@@ -69,6 +69,12 @@ final class AppBootstrap
         $router->post('/api/roles', [RolesController::class, 'create'], $manager);
         $router->post('/api/roles/:id/update', [RolesController::class, 'update'], $manager);
         $router->post('/api/roles/:id/delete', [RolesController::class, 'delete'], $manager);
+
+        // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.
+        $permissionAssigner = [...$authenticated, RequirePermission::for(PermissionCatalog::PERMISSIONS_ASSIGN)];
+        $router->post('/api/accounts/:id/permissions/grant', [AccountAccessController::class, 'grantPermission'], $permissionAssigner);
+        $router->post('/api/accounts/:id/permissions/withdraw', [AccountAccessController::class, 'withdrawPermission'], $permissionAssigner);
+        $router->post('/api/accounts/:id/permissions/clear', [AccountAccessController::class, 'clearPermission'], $permissionAssigner);
     }
 
     public static function me(Request $request, Response $response): void
