@@ -9,6 +9,7 @@ final class Account
     /**
      * @param int|null $sessionsValidAfter Unix-Zeit: Tokens mit frueherem `iat` sind widerrufen (ADR 0002 B2); null = keine Grenze
      * @param int|null $inactiveSince Unix-Zeit der Deaktivierung
+     * @param bool $loginSyncPending "Abgleich offen": die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42)
      */
     public function __construct(
         public readonly string $publicUserId,
@@ -19,6 +20,7 @@ final class Account
         public readonly ?int $sessionsValidAfter = null,
         public readonly ?int $inactiveSince = null,
         public readonly ?string $inactiveReason = null,
+        public readonly bool $loginSyncPending = false,
     ) {
     }
 

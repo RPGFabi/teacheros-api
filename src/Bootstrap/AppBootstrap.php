@@ -71,8 +71,10 @@ final class AppBootstrap
         $router->post('/api/roles/:id/update', [RolesController::class, 'update'], $manager);
         $router->post('/api/roles/:id/delete', [RolesController::class, 'delete'], $manager);
 
-        // Konto deaktivieren (Ticket #41). Reaktivieren folgt in Ticket #43.
-        $router->post('/api/accounts/:id/deactivate', [AccountAccessController::class, 'deactivate'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_DEACTIVATE)]);
+        // Konto deaktivieren (Ticket #41) und den Abgleich mit dem Anmeldedienst wiederholen (Ticket #42). Reaktivieren folgt in Ticket #43.
+        $deactivator = [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_DEACTIVATE)];
+        $router->post('/api/accounts/:id/deactivate', [AccountAccessController::class, 'deactivate'], $deactivator);
+        $router->post('/api/accounts/:id/resync-login', [AccountAccessController::class, 'resyncLogin'], $deactivator);
 
         // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.
         $permissionAssigner = [...$authenticated, RequirePermission::for(PermissionCatalog::PERMISSIONS_ASSIGN)];

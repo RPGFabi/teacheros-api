@@ -62,13 +62,25 @@ final class AccountAccessController
     }
 
     /**
-     * Konto deaktivieren (Ticket #41). Antwort: die aktuelle Lesesicht.
-     * Andockpunkt Ticket #42: nach diesem Aufruf (lokaler Commit ist erfolgt) `disable-login` beim Anmeldedienst
-     * aufrufen; scheitert er, bleibt die lokale Sperre bestehen und das Konto bekommt die Markierung "Abgleich offen".
+     * Konto deaktivieren (Ticket #41). Antwort: die aktuelle Lesesicht. Nach dem lokalen Commit wird die Sperre an den
+     * Anmeldedienst gespiegelt (Ticket #42); scheitert das, bleibt sie bestehen, das Konto ist 200 deaktiviert und die
+     * Lesesicht nennt `login_sync_pending` ("Abgleich offen").
      */
     public static function deactivate(Request $request, Response $response): void
     {
-        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->deactivateAccount($actor, $accountId));
+        self::change($request, $response, function (Actor $actor, string $accountId): void {
+            (new AccessAdministration())->deactivateAccount($actor, $accountId);
+            (new AccountLoginSync())->mirrorDeactivation($accountId);
+        });
+    }
+
+    /**
+     * "Abgleich wiederholen" (Ticket #42): ruft `disable-login` erneut auf. Kein Audit-Eintrag. Fehler: 409 `sync_not_pending`,
+     * 502 `auth_unavailable` (die Markierung bleibt). Antwort: die aktuelle Lesesicht.
+     */
+    public static function resyncLogin(Request $request, Response $response): void
+    {
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccountLoginSync())->resync($accountId));
     }
 
     /** Fuehrt eine Aenderung am Konto der Route aus und antwortet mit der aktuellen Lesesicht. @param callable(Actor, string): void $change */
