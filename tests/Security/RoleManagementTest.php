@@ -43,7 +43,6 @@ final class RoleManagementTest extends TestCase
     {
         // Die Test-DB gilt fuer den ganzen Lauf: eigene Rollen entfernen, Standardrollen zuruecksetzen.
         $pdo = $this->app->pdo();
-        $pdo->exec('SET NAMES utf8mb4'); // sonst landen Umlaute der Standardnamen als Zeichensalat in der DB
         $pdo->exec("DELETE FROM `permission_roles` WHERE `role_key` LIKE 'r\\_%'");
         foreach (StandardRoles::definitions() as $d) {
             if ($d['key'] === 'schuladmin') {

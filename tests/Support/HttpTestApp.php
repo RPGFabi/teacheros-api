@@ -120,7 +120,7 @@ final class HttpTestApp
     public function pdo(): \PDO
     {
         $e = $this->env();
-        return new \PDO("mysql:host={$e['DB_HOST']};port={$e['DB_PORT']};dbname={$this->dbName}", $e['DB_USER'], $e['DB_PASSWORD'], [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        return new \PDO("mysql:host={$e['DB_HOST']};port={$e['DB_PORT']};dbname={$this->dbName};charset=utf8mb4", $e['DB_USER'], $e['DB_PASSWORD'], [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
     }
 
     public function resetAccounts(): void
