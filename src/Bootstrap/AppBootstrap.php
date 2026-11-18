@@ -56,6 +56,11 @@ final class AppBootstrap
         $reader = [...$authenticated, RequirePermission::forAny(PermissionCatalog::ADMINISTRATION)];
         $router->get('/api/permissions', [RolesController::class, 'permissions'], $reader);
         $router->get('/api/roles', [RolesController::class, 'index'], $reader);
+
+        $manager = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_MANAGE)];
+        $router->post('/api/roles', [RolesController::class, 'create'], $manager);
+        $router->patch('/api/roles/:id', [RolesController::class, 'update'], $manager);
+        $router->delete('/api/roles/:id', [RolesController::class, 'delete'], $manager);
     }
 
     public static function me(Request $request, Response $response): void

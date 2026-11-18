@@ -21,6 +21,9 @@ final class AuditLog
     public const ROLE_CREATED = 'role.created';
     public const ROLE_ASSIGNED = 'role.assigned';
     public const ROLE_REVOKED = 'role.revoked';
+    /** Rechte, Name, Beschreibung oder MFA-Merkmal einer Rolle geaendert (Ticket #33). */
+    public const ROLE_UPDATED = 'role.updated';
+    public const ROLE_DELETED = 'role.deleted';
 
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void

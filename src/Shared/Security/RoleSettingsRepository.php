@@ -36,4 +36,19 @@ final class RoleSettingsRepository
         }
         return $result;
     }
+
+    /** @return array{protection:RoleProtection,requires_mfa:bool}|null */
+    public function find(string $roleId): ?array
+    {
+        $stmt = DB::getInstance()->prepare('SELECT `protection`, `requires_mfa` FROM `role_settings` WHERE `role_id` = :id');
+        $stmt->execute(['id' => $roleId]);
+        $row = $stmt->fetch();
+        return $row === false ? null : ['protection' => RoleProtection::from($row['protection']), 'requires_mfa' => (bool) $row['requires_mfa']];
+    }
+
+    public function setRequiresMfa(string $roleId, bool $requiresMfa): void
+    {
+        DB::getInstance()->prepare('UPDATE `role_settings` SET `requires_mfa` = :mfa WHERE `role_id` = :id')
+            ->execute(['id' => $roleId, 'mfa' => (int) $requiresMfa]);
+    }
 }

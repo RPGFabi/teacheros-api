@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace TeacherOS\Shared\Security;
 
+use Hoelzle\Core\Database\DB;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
+use TeacherOS\Shared\Exceptions\CodedException;
 
 /**
  * Der einzige Weg, Rollen zu vergeben oder zu entziehen (ADR 0002 B4); jede Aktion
@@ -16,8 +18,10 @@ final class AccessAdministration
 {
     public const ROLE_SCHULADMIN = 'schuladmin';
 
-    public function __construct(private readonly AuditLog $audit = new AuditLog())
-    {
+    public function __construct(
+        private readonly AuditLog $audit = new AuditLog(),
+        private readonly RoleSettingsRepository $settings = new RoleSettingsRepository(),
+    ) {
     }
 
     /** Vergibt die Rolle Schuladmin. Hat das Konto sie schon, geschieht nichts (kein doppelter Audit-Eintrag). */
@@ -42,5 +46,178 @@ final class AccessAdministration
         }
         $service->setUserAccess($publicUserId, [], []);
         $this->audit->record($actor, AuditLog::ROLE_REVOKED, 'account', $publicUserId);
+    }
+
+    // --- Rollen anlegen, bearbeiten, loeschen (Ticket #33) ---
+
+    /**
+     * Legt eine eigene Rolle an. Den Schluessel vergibt die API zufaellig; er ist unveraenderlich.
+     * Ohne Wildcard darf der Akteur nur Rechte vergeben, die er selbst effektiv besitzt (P2).
+     *
+     * @param list<string> $permissions bereits gegen den Katalog geprueft
+     * @return string Rollen-ID
+     * @throws CodedException `permission_not_held` (403)
+     */
+    public function createRole(Actor $actor, string $name, ?string $description, array $permissions, bool $requiresMfa): string
+    {
+        return $this->inTransaction(function () use ($actor, $name, $description, $permissions, $requiresMfa): string {
+            $this->requireHolding($actor, $permissions);
+            $role = PermissionCatalog::service()->createRole('r_' . bin2hex(random_bytes(8)), $name, $description, $permissions);
+            $this->settings->registerIfMissing($role['id'], RoleProtection::Custom, $requiresMfa);
+            $this->audit->record($actor, AuditLog::ROLE_CREATED, 'role', $role['id'], ['role' => $role['role_key'], 'name' => $role['name']]);
+            return $role['id'];
+        });
+    }
+
+    /**
+     * Aendert Name, Beschreibung, Rechte und (bei eigenen Rollen) das MFA-Merkmal. Aendert sich das
+     * Merkmal, wird `mfa_required` aller Konten mit der Rolle in derselben Transaktion neu berechnet.
+     * Ohne tatsaechliche Aenderung entsteht kein Audit-Eintrag.
+     *
+     * @throws CodedException `role_not_found` (404), `role_protected` (409), `permission_not_held`, `self_escalation` (403)
+     */
+    public function updateRole(Actor $actor, string $roleId, RoleChanges $changes): void
+    {
+        $this->inTransaction(function () use ($actor, $roleId, $changes): void {
+            $service = PermissionCatalog::service();
+            $this->lockRole($roleId);
+            $role = $service->getRole($roleId);
+            $current = $this->settings->find($roleId) ?? ['protection' => RoleProtection::Custom, 'requires_mfa' => true];
+
+            if ($current['protection'] === RoleProtection::Wildcard || $current['protection'] === RoleProtection::Protected) {
+                throw new CodedException('role_protected', 409, 'Diese Rolle ist geschützt und lässt sich nicht bearbeiten.');
+            }
+            $mfaChanges = $changes->requiresMfa !== null && $changes->requiresMfa !== $current['requires_mfa'];
+            if ($mfaChanges && $current['protection'] !== RoleProtection::Custom) {
+                throw new CodedException('role_protected', 409, 'Das MFA-Merkmal einer Standardrolle ist fest.');
+            }
+
+            $added = $changes->permissions === null ? [] : array_values(array_diff($changes->permissions, $role['permissions']));
+            $removed = $changes->permissions === null ? [] : array_values(array_diff($role['permissions'], $changes->permissions));
+            if ($added !== [] && $this->isBoundByP2($actor)) {
+                if (in_array($roleId, $service->getUserAccess((string) $actor->accountId)['role_ids'], true)) {
+                    throw new CodedException('self_escalation', 403, 'Eine Rolle, die du selbst innehast, kannst du nicht erweitern.');
+                }
+                $this->requireHolding($actor, $added);
+            }
+
+            $name = $changes->name ?? $role['name'];
+            $description = $changes->changesDescription ? $changes->description : $role['description'];
+            $descriptionChanged = $changes->changesDescription && trim((string) $description) !== (string) $role['description'];
+            $renamed = trim($name) !== $role['name'];
+            if (!$renamed && !$descriptionChanged && $added === [] && $removed === [] && !$mfaChanges) {
+                return;
+            }
+
+            $updated = $service->updateRole($roleId, $name, $description, $changes->permissions);
+            if ($mfaChanges) {
+                $this->settings->setRequiresMfa($roleId, (bool) $changes->requiresMfa);
+                MfaRequirement::recomputeFor($this->accountsWithRole($roleId));
+            }
+
+            $context = ['role' => $updated['role_key'], 'name' => $updated['name']];
+            if ($renamed) {
+                $context['old_name'] = $role['name'];
+            }
+            if ($descriptionChanged) {
+                $context['description_changed'] = true;
+            }
+            if ($added !== []) {
+                $context['added'] = implode(',', $added);
+            }
+            if ($removed !== []) {
+                $context['removed'] = implode(',', $removed);
+            }
+            if ($mfaChanges) {
+                $context['requires_mfa'] = (bool) $changes->requiresMfa;
+            }
+            $this->audit->record($actor, AuditLog::ROLE_UPDATED, 'role', $roleId, $context);
+        });
+    }
+
+    /**
+     * Loescht eine eigene Rolle, die keinem Konto mehr zugewiesen ist (das Cascade des Pakets greift damit nie).
+     *
+     * @throws CodedException `role_not_found` (404), `role_protected`, `role_in_use` (409)
+     */
+    public function deleteRole(Actor $actor, string $roleId): void
+    {
+        $this->inTransaction(function () use ($actor, $roleId): void {
+            $service = PermissionCatalog::service();
+            // Die Sperre auf der Rollenzeile haelt auch gleichzeitige Zuweisungen (Fremdschluessel) bis zum Ende auf.
+            $this->lockRole($roleId);
+            $role = $service->getRole($roleId);
+            $protection = $this->settings->find($roleId)['protection'] ?? RoleProtection::Custom;
+            if ($protection !== RoleProtection::Custom) {
+                throw new CodedException('role_protected', 409, 'Standardrollen lassen sich nicht löschen.');
+            }
+            if ($role['user_count'] > 0) {
+                throw new CodedException('role_in_use', 409, 'Die Rolle ist noch Konten zugewiesen.');
+            }
+            $service->deleteRole($roleId);
+            $this->audit->record($actor, AuditLog::ROLE_DELETED, 'role', $roleId, ['role' => $role['role_key'], 'name' => $role['name']]);
+        });
+    }
+
+    /** P2 gilt fuer Konten ohne Wildcard; die CLI (Betreiber) ist ausgenommen. */
+    private function isBoundByP2(Actor $actor): bool
+    {
+        if ($actor->accountId === null) {
+            return false;
+        }
+        return !PermissionCatalog::service()->forUser($actor->accountId)->hasWildcard;
+    }
+
+    /**
+     * @param list<string> $permissions
+     * @throws CodedException `permission_not_held` (403)
+     */
+    private function requireHolding(Actor $actor, array $permissions): void
+    {
+        if (!$this->isBoundByP2($actor)) {
+            return;
+        }
+        $held = PermissionCatalog::service()->forUser((string) $actor->accountId);
+        foreach ($permissions as $permission) {
+            if (!$held->can($permission)) {
+                throw new CodedException('permission_not_held', 403, 'Du kannst nur Rechte vergeben, die du selbst besitzt.');
+            }
+        }
+    }
+
+    /** @throws CodedException `role_not_found` (404) */
+    private function lockRole(string $roleId): void
+    {
+        $stmt = DB::getInstance()->prepare('SELECT `id` FROM `permission_roles` WHERE `id` = :id FOR UPDATE');
+        $stmt->execute(['id' => $roleId]);
+        if ($stmt->fetchColumn() === false) {
+            throw new CodedException('role_not_found', 404, 'Die Rolle gibt es nicht.');
+        }
+    }
+
+    /** @return list<string> */
+    private function accountsWithRole(string $roleId): array
+    {
+        $stmt = DB::getInstance()->prepare('SELECT `user_uuid` FROM `permission_user_roles` WHERE `role_id` = :id');
+        $stmt->execute(['id' => $roleId]);
+        return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    /** Fuehrt die Arbeit in einer Transaktion aus (oder in der des Aufrufers). */
+    private function inTransaction(callable $work): mixed
+    {
+        $pdo = DB::getInstance();
+        if ($pdo->inTransaction()) {
+            return $work();
+        }
+        $pdo->beginTransaction();
+        try {
+            $result = $work();
+            $pdo->commit();
+            return $result;
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
 }

@@ -44,4 +44,15 @@ final class RoleOverview
         usort($roles, static fn (array $a, array $b) => [StandardRoles::position($a['key']), $a['name']] <=> [StandardRoles::position($b['key']), $b['name']]);
         return $roles;
     }
+
+    /** @return array<string,mixed>|null eine Zeile von {@see self::list()} */
+    public function find(string $roleId): ?array
+    {
+        foreach ($this->list() as $role) {
+            if ($role['id'] === $roleId) {
+                return $role;
+            }
+        }
+        return null;
+    }
 }

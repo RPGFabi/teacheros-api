@@ -88,6 +88,23 @@ Lesender Teil der Rollenverwaltung (ADR 0002 B4, Nachtrag #11). Beide Endpunkte 
 - Das Setup (`setup/migrate/0008_standard_roles.php`, `StandardRoles::ensureAll`) legt die sechs Standardrollen idempotent an; die letzten vier starten ohne Rechte, bestehende Rollen bleiben unverändert. Nur beim tatsächlichen Anlegen entsteht ein Audit-Eintrag `role.created` (Akteur `cli`, Objekt = Rolle, Kontext Schlüssel und Name).
 - Rechte-Katalog: `PermissionCatalog::entries()` (Schlüssel, Name, Gruppe); neue Rechte gehören dort hinein. Der Web-Navigationspunkt „Rollen“ erscheint nur mit einem der drei Rechte (aus `GET /api/me`).
 
+## Rollen anlegen, bearbeiten, löschen (Ticket #33)
+
+Schreibwege der Rollenverwaltung (ADR 0002 B4, Nachtrag #11). Alle brauchen ein gültiges Token und **`roles.manage`** (ein Konto mit nur `roles.assign` erhält `403 forbidden`). Die Änderung läuft ausschließlich über `AccessAdministration` (`createRole`, `updateRole`, `deleteRole`), je in einer Transaktion samt Audit-Eintrag.
+
+| Endpunkt | Body | Antwort |
+|---|---|---|
+| `POST /api/roles` | `{name, description?, permissions?, requires_mfa?}` (Standard: keine Rechte, MFA an) | `201 {"role": {…}}` (Zeile wie in `GET /api/roles`) |
+| `PATCH /api/roles/:id` | beliebige der Felder; nicht genannte bleiben unverändert (`description: null` oder `""` leert sie) | `200 {"role": {…}}` |
+| `DELETE /api/roles/:id` | – | `200 {"deleted": true, "id": …}` |
+
+- Den Rollenschlüssel (`r_` + 16 Hex-Zeichen) vergibt die API zufällig; er ist unveränderlich und taucht nur in `key` der Antwort auf, nicht in der Oberfläche. Name 1 bis 120, Beschreibung bis 500 Zeichen, Rechte nur aus dem Katalog (kein `*`).
+- Fehler: `400 invalid_request` (Eingabe), `404 role_not_found`; `403 permission_not_held` (P2: ohne Wildcard nur Rechte hinzufügen, die man effektiv besitzt), `403 self_escalation` (eine selbst innegehabte Rolle erweitern; Entfernen von Rechten ist immer erlaubt; Wildcard-Konten sind ausgenommen); `409 role_protected` (Schuladmin/Schüler/in bearbeiten, Standardrolle löschen, MFA-Merkmal einer Standardrolle auf einen anderen Wert setzen; derselbe Wert ist unschädlich), `409 role_in_use` (Löschen einer noch zugewiesenen Rolle). Reihenfolge: 404, `role_protected`, `self_escalation`, `permission_not_held`.
+- Ändert sich das MFA-Merkmal einer eigenen Rolle, berechnet `MfaRequirement::recomputeFor()` `accounts.mfa_required` aller Konten mit der Rolle in derselben Transaktion neu (ODER über alle Rollen des Kontos; Rollen ohne Merkmale zählen als MFA-pflichtig).
+- Löschen sperrt die Rollenzeile (`SELECT … FOR UPDATE`); gleichzeitige Zuweisungen warten über den Fremdschlüssel: Entweder sieht das Löschen die Zuweisung (`role_in_use`) oder die Zuweisung scheitert an der gelöschten Rolle.
+- Audit (Objekt `role` = Rollen-ID): `role.created` und `role.deleted` mit `{role, name}`; `role.updated` mit `{role, name}` plus, soweit zutreffend, `old_name`, `description_changed`, `added` und `removed` (kommagetrennte Rechte-Schlüssel) und `requires_mfa`. Ein Aufruf ohne tatsächliche Änderung schreibt nichts.
+- Web: Seite „Rollen“ mit Anlegen-/Bearbeiten-Formular (gruppierte Checkboxen aus `GET /api/permissions`) und Löschen mit Bestätigung. Nicht erlaubte Aktionen (ohne `roles.manage`, geschützte Rolle, Standardrolle, noch zugewiesene Rolle, nicht besessenes Recht) bleiben sichtbar, aber deaktiviert, mit Begründung; die API entscheidet endgültig.
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)
