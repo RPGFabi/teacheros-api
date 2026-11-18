@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace TeacherOS\Shared\Security;
 
-use Hoelzle\Core\Database\DB;
-use TeacherOS\Shared\Audit\Actor;
-use TeacherOS\Shared\Audit\AuditLog;
-
 /**
  * Die sechs Standardrollen jeder Schulinstanz (GLOSSARY.md, ADR 0002 B4 Nachtrag #11):
  * Schluessel, Name, Schutzstufe und festes MFA-Merkmal. Die Reihenfolge der Liste ist die
- * Anzeigereihenfolge; {@see self::position()} sortiert eigene Rollen dahinter ein.
+ * Anzeigereihenfolge; {@see self::position()} sortiert eigene Rollen dahinter ein. Angelegt werden die Rollen
+ * von Migration 0008, die ihre Definitionen bewusst fest enthaelt; diese Klasse dient nur dem Laufzeitwissen.
  */
 final class StandardRoles
 {
@@ -21,12 +18,6 @@ final class StandardRoles
     public const ERZIEHUNGSBERECHTIGTE = 'erziehungsberechtigte';
     public const SEKRETARIAT = 'sekretariat';
     public const SCHULLEITUNG = 'schulleitung';
-
-    public function __construct(
-        private readonly AuditLog $audit = new AuditLog(),
-        private readonly RoleSettingsRepository $settings = new RoleSettingsRepository(),
-    ) {
-    }
 
     /** @return list<array{key:string,name:string,description:string,protection:RoleProtection,requires_mfa:bool}> */
     public static function definitions(): array
@@ -56,31 +47,5 @@ final class StandardRoles
             }
         }
         return PHP_INT_MAX;
-    }
-
-    /**
-     * Legt fehlende Standardrollen samt Merkmalen an. Bestehende Rollen bleiben unveraendert, damit
-     * Aenderungen der Schule (Rechte, Name, Beschreibung) ein erneutes Setup überstehen. Nur wenn die
-     * Merkmale dabei neu entstehen, gibt es einen Audit-Eintrag `role.created`.
-     */
-    public function ensureAll(Actor $actor): void
-    {
-        $service = PermissionCatalog::service();
-        $pdo = DB::getInstance();
-        foreach (self::definitions() as $d) {
-            $pdo->beginTransaction();
-            try {
-                $roleId = $d['protection'] === RoleProtection::Wildcard
-                    ? $service->ensureSystemRole($d['key'], $d['name'], $d['description'])
-                    : $service->ensureRole($d['key'], $d['name'], $d['description'], []);
-                if ($this->settings->registerIfMissing($roleId, $d['protection'], $d['requires_mfa'])) {
-                    $this->audit->record($actor, AuditLog::ROLE_CREATED, 'role', $roleId, ['role' => $d['key'], 'name' => $d['name']]);
-                }
-                $pdo->commit();
-            } catch (\Throwable $e) {
-                $pdo->rollBack();
-                throw $e;
-            }
-        }
     }
 }

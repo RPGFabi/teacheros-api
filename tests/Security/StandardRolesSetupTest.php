@@ -65,14 +65,26 @@ final class StandardRolesSetupTest extends TestCase
         $this->assertSame(1, $this->roleCount('sekretariat'));
     }
 
-    public function testSetupAufLeererSchulinstanzLegtAlleSechsAnUndAuditiertJede(): void
+    public function testVorhandeneRolleOhneMerkmaleBekommtMerkmaleNachgetragenAberKeinRoleCreated(): void
+    {
+        $this->app->pdo()->exec("DELETE rs FROM `role_settings` rs JOIN `permission_roles` r ON r.`id` = rs.`role_id` WHERE r.`role_key` IN ('schuladmin', 'lehrkraft')");
+
+        $this->app->rerunMigrations('0008_standard_roles.php');
+
+        $this->assertSame([], $this->createdAudit(), 'die Rollen gab es schon, nur ihre Merkmale fehlten');
+        $settings = $this->app->pdo()->query("SELECT r.`role_key`, rs.`protection`, rs.`requires_mfa` FROM `role_settings` rs JOIN `permission_roles` r ON r.`id` = rs.`role_id` WHERE r.`role_key` IN ('schuladmin', 'lehrkraft') ORDER BY r.`role_key`")->fetchAll(\PDO::FETCH_ASSOC);
+        $this->assertSame([['role_key' => 'lehrkraft', 'protection' => 'standard', 'requires_mfa' => 1], ['role_key' => 'schuladmin', 'protection' => 'wildcard', 'requires_mfa' => 1]], $settings);
+    }
+
+    public function testSetupAufLeererSchulinstanzLegtAlleSechsAnUndAuditiertDieFuenfNeuen(): void
     {
         $keys = "'" . implode("','", self::KEYS) . "'";
         $this->app->pdo()->exec("DELETE FROM `permission_roles` WHERE `role_key` IN ($keys)");
 
         $this->app->rerunMigrations('0004_schuladmin_role.php', '0008_standard_roles.php');
 
-        $this->assertCount(6, $this->createdAudit());
+        // Schuladmin legt schon Migration 0004 an, 0008 findet ihn vor: kein role.created dafuer.
+        $this->assertCount(5, $this->createdAudit());
         $perms = $this->app->pdo()->query("SELECT r.`role_key`, COUNT(p.`permission`) FROM `permission_roles` r LEFT JOIN `permission_role_permissions` p ON p.`role_id` = r.`id` GROUP BY r.`role_key`")->fetchAll(\PDO::FETCH_KEY_PAIR);
         $this->assertSame(1, (int) $perms['schuladmin']);
         foreach (['schueler', 'lehrkraft', 'erziehungsberechtigte', 'sekretariat', 'schulleitung'] as $key) {
