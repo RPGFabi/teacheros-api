@@ -11,6 +11,7 @@ use Hoelzle\Core\Debug\Debugger;
 use Hoelzle\Core\Http\CorsHandler;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
+use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
 use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
@@ -56,6 +57,12 @@ final class AppBootstrap
         $reader = [...$authenticated, RequirePermission::forAny(PermissionCatalog::ADMINISTRATION)];
         $router->get('/api/permissions', [RolesController::class, 'permissions'], $reader);
         $router->get('/api/roles', [RolesController::class, 'index'], $reader);
+
+        // Rollen an Konten (Ticket #34): Lesesicht der Zuweisungen, Vergeben und Entziehen einzeln.
+        $router->get('/api/accounts/:id/access', [AccountAccessController::class, 'show'], $reader);
+        $assigner = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_ASSIGN)];
+        $router->post('/api/accounts/:id/roles', [AccountAccessController::class, 'assign'], $assigner);
+        $router->post('/api/accounts/:id/roles/:roleId/revoke', [AccountAccessController::class, 'revoke'], $assigner);
     }
 
     public static function me(Request $request, Response $response): void

@@ -85,6 +85,14 @@ final class FirstSchuladminCliTest extends TestCase
         }
     }
 
+    public function testErsterSchuladminBekommtMfaRequiredGesetztWeilDieRolleMfaVerlangt(): void
+    {
+        $this->assertSame(0, $this->invite()['code']);
+
+        $accounts = $this->app->accounts();
+        $this->assertSame(1, (int) $accounts[0]['mfa_required']);
+    }
+
     public function testEingeladenerAdminWirdBeiDerErstenAnmeldungAktivMitAllenRechten(): void
     {
         $this->invite();
