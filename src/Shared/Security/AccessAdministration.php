@@ -94,17 +94,13 @@ final class AccessAdministration
         $this->atomically(function () use ($actor, $targetId, $roleId, $assign): void {
             // Zuerst die Rolle sperren: fuer Schuladmin ist das der Mutex von P3 ({@see LastAdminGuard}). Die Reihenfolge
             // Rolle, dann Zielkonto gilt fuer Vergeben und Entziehen, damit sich zwei Admins nicht gegenseitig verklemmen.
-            $roleLock = DB::getInstance()->prepare('SELECT `id` FROM `permission_roles` WHERE `id` = :id FOR UPDATE');
-            $roleLock->execute(['id' => $roleId]);
+            $this->lockRole($roleId);
             // Sperre auf dem Zielkonto: gleichzeitige Aenderungen desselben Kontos laufen nacheinander.
             $this->lockAccount($targetId);
-            $roles = array_column((new RoleOverview())->list(), null, 'id');
-            $role = $roles[$roleId] ?? throw new CodedException('role_not_found', 404, 'Die Rolle gibt es nicht.');
+            $roles = (new RoleOverview())->byId();
+            $role = $roles[$roleId];
 
-            $refusal = (new RoleAssignmentRules($actor->accountId, $roles, lockAdmins: true))->refusal($targetId, $role, $assign);
-            if ($refusal !== null) {
-                throw $refusal;
-            }
+            $this->throwIfRefused((new RoleAssignmentRules($actor->accountId, $roles, lockAdmins: true))->refusal($targetId, $role, $assign));
 
             $service = PermissionCatalog::service();
             $access = $service->getUserAccess($targetId);
@@ -143,10 +139,7 @@ final class AccessAdministration
     public function ensureAdminRemains(array $leavingIds): void
     {
         $this->atomically(function () use ($leavingIds): void {
-            $refusal = (new LastAdminGuard())->refusal($leavingIds, true);
-            if ($refusal !== null) {
-                throw $refusal;
-            }
+            $this->throwIfRefused((new LastAdminGuard())->refusal($leavingIds, true));
         });
     }
 
@@ -179,10 +172,7 @@ final class AccessAdministration
     {
         $this->atomically(function () use ($actor, $targetId, $permission, $action): void {
             $this->lockAccount($targetId);
-            $refusal = (new PermissionOverrideRules($actor->accountId, array_column((new RoleOverview())->list(), null, 'id')))->refusal($targetId, $permission, $action);
-            if ($refusal !== null) {
-                throw $refusal;
-            }
+            $this->throwIfRefused((new PermissionOverrideRules($actor->accountId, (new RoleOverview())->byId()))->refusal($targetId, $permission, $action));
             $service = PermissionCatalog::service();
             $access = $service->getUserAccess($targetId);
             $current = $access['overrides'][$permission] ?? null;
@@ -254,7 +244,10 @@ final class AccessAdministration
     {
         $id = '';
         $this->atomically(function () use ($actor, $name, $description, $permissions, $requiresMfa, &$id): void {
-            $this->requireHolding($actor, $permissions);
+            $rules = new RoleManagementRules($actor->accountId);
+            foreach ($permissions as $permission) {
+                $this->throwIfRefused($rules->addPermissionRefusal(null, $permission));
+            }
             $role = PermissionCatalog::service()->createRole('r_' . bin2hex(random_bytes(8)), $name, $description, $permissions);
             $this->settings->registerIfMissing($role['id'], RoleProtection::Custom, $requiresMfa);
             $this->audit->record($actor, AuditLog::ROLE_CREATED, 'role', $role['id'], ['role' => $role['role_key'], 'name' => $role['name']]);
@@ -273,26 +266,20 @@ final class AccessAdministration
     public function updateRole(Actor $actor, string $roleId, RoleChanges $changes): void
     {
         $this->atomically(function () use ($actor, $roleId, $changes): void {
-            $service = PermissionCatalog::service();
             $this->lockRole($roleId);
-            $role = $service->getRole($roleId);
-            $current = $this->settings->get($roleId);
+            $role = (new RoleOverview())->byId()[$roleId];
+            $rules = new RoleManagementRules($actor->accountId);
 
-            if ($current['protection'] === RoleProtection::Wildcard || $current['protection'] === RoleProtection::Protected) {
-                throw new CodedException('role_protected', 409, 'Diese Rolle ist geschützt und lässt sich nicht bearbeiten.');
-            }
-            $mfaChanges = $changes->requiresMfa !== null && $changes->requiresMfa !== $current['requires_mfa'];
-            if ($mfaChanges && $current['protection'] !== RoleProtection::Custom) {
-                throw new CodedException('role_protected', 409, 'Das MFA-Merkmal einer Standardrolle ist fest.');
+            $this->throwIfRefused($rules->refusal($role, RoleManagementRules::EDIT));
+            $mfaChanges = $changes->requiresMfa !== null && $changes->requiresMfa !== $role['requires_mfa'];
+            if ($mfaChanges) {
+                $this->throwIfRefused($rules->refusal($role, RoleManagementRules::SET_MFA));
             }
 
             $added = $changes->permissions === null ? [] : array_values(array_diff($changes->permissions, $role['permissions']));
             $removed = $changes->permissions === null ? [] : array_values(array_diff($role['permissions'], $changes->permissions));
-            if ($added !== [] && $this->isBoundByP2($actor)) {
-                if (in_array($roleId, $service->getUserAccess((string) $actor->accountId)['role_ids'], true)) {
-                    throw new CodedException('self_escalation', 403, 'Eine Rolle, die Sie selbst innehaben, können Sie nicht erweitern.');
-                }
-                $this->requireHolding($actor, $added);
+            foreach ($added as $permission) {
+                $this->throwIfRefused($rules->addPermissionRefusal($role, $permission));
             }
 
             $name = $changes->name ?? $role['name'];
@@ -303,7 +290,7 @@ final class AccessAdministration
                 return;
             }
 
-            $updated = $service->updateRole($roleId, $name, $description, $changes->permissions);
+            $updated = PermissionCatalog::service()->updateRole($roleId, $name, $description, $changes->permissions);
             if ($mfaChanges) {
                 $this->settings->setRequiresMfa($roleId, (bool) $changes->requiresMfa);
                 MfaRequirement::recomputeFor($this->accountsWithRole($roleId));
@@ -337,45 +324,20 @@ final class AccessAdministration
     public function deleteRole(Actor $actor, string $roleId): void
     {
         $this->atomically(function () use ($actor, $roleId): void {
-            $service = PermissionCatalog::service();
             // Die Sperre auf der Rollenzeile haelt auch gleichzeitige Zuweisungen (Fremdschluessel) bis zum Ende auf.
             $this->lockRole($roleId);
-            $role = $service->getRole($roleId);
-            $protection = $this->settings->get($roleId)['protection'];
-            if ($protection !== RoleProtection::Custom) {
-                throw new CodedException('role_protected', 409, 'Standardrollen lassen sich nicht löschen.');
-            }
-            if ($role['user_count'] > 0) {
-                throw new CodedException('role_in_use', 409, 'Die Rolle ist noch Konten zugewiesen.');
-            }
-            $service->deleteRole($roleId);
-            $this->audit->record($actor, AuditLog::ROLE_DELETED, 'role', $roleId, ['role' => $role['role_key'], 'name' => $role['name']]);
+            $role = (new RoleOverview())->byId()[$roleId];
+            $this->throwIfRefused((new RoleManagementRules($actor->accountId))->refusal($role, RoleManagementRules::DELETE));
+            PermissionCatalog::service()->deleteRole($roleId);
+            $this->audit->record($actor, AuditLog::ROLE_DELETED, 'role', $roleId, ['role' => $role['key'], 'name' => $role['name']]);
         });
     }
 
-    /** P2 gilt fuer Konten ohne Wildcard; die CLI (Betreiber) ist ausgenommen. */
-    private function isBoundByP2(Actor $actor): bool
+    /** @throws CodedException die Ablehnung, wenn es eine gibt */
+    private function throwIfRefused(?CodedException $refusal): void
     {
-        if ($actor->accountId === null) {
-            return false;
-        }
-        return !PermissionCatalog::service()->forUser($actor->accountId)->hasWildcard;
-    }
-
-    /**
-     * @param list<string> $permissions
-     * @throws CodedException `permission_not_held` (403)
-     */
-    private function requireHolding(Actor $actor, array $permissions): void
-    {
-        if (!$this->isBoundByP2($actor)) {
-            return;
-        }
-        $held = PermissionCatalog::service()->forUser((string) $actor->accountId);
-        foreach ($permissions as $permission) {
-            if (!$held->can($permission)) {
-                throw new CodedException('permission_not_held', 403, 'Sie können nur Rechte vergeben, die Sie selbst besitzen.');
-            }
+        if ($refusal !== null) {
+            throw $refusal;
         }
     }
 

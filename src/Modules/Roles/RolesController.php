@@ -6,11 +6,10 @@ namespace TeacherOS\Modules\Roles;
 
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
-use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Security\AccessAdministration;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 use TeacherOS\Shared\Security\PermissionCatalog;
-use TeacherOS\Shared\Security\RoleOverview;
+use TeacherOS\Shared\Security\RoleManagementView;
 
 /**
  * Endpunkte der Rollenverwaltung: Lesen (Ticket #32), Anlegen, Bearbeiten, Loeschen (Ticket #33). Zugriff mit einem der drei Verwaltungsrechte
@@ -25,32 +24,34 @@ final class RolesController
 
     public static function index(Request $request, Response $response): void
     {
-        $response->json(['roles' => (new RoleOverview())->list()]);
+        $viewer = self::viewerId();
+        $view = new RoleManagementView();
+        $response->json(['roles' => $view->list($viewer), 'create' => $view->creation($viewer)]);
     }
 
     public static function create(Request $request, Response $response): void
     {
         $input = RoleInput::forCreate($request->getBody());
-        $id = (new AccessAdministration())->createRole(self::actor(), $input['name'], $input['description'], $input['permissions'], $input['requires_mfa']);
-        $response->json(['role' => (new RoleOverview())->find($id)], 201);
+        $id = (new AccessAdministration())->createRole(AuthenticationMiddleware::actor(), $input['name'], $input['description'], $input['permissions'], $input['requires_mfa']);
+        $response->json(['role' => (new RoleManagementView())->find($id, self::viewerId())], 201);
     }
 
     public static function update(Request $request, Response $response): void
     {
         $id = (string) $request->getParam('id');
-        (new AccessAdministration())->updateRole(self::actor(), $id, RoleInput::forUpdate($request->getBody()));
-        $response->json(['role' => (new RoleOverview())->find($id)]);
+        (new AccessAdministration())->updateRole(AuthenticationMiddleware::actor(), $id, RoleInput::forUpdate($request->getBody()));
+        $response->json(['role' => (new RoleManagementView())->find($id, self::viewerId())]);
     }
 
     public static function delete(Request $request, Response $response): void
     {
         $id = (string) $request->getParam('id');
-        (new AccessAdministration())->deleteRole(self::actor(), $id);
+        (new AccessAdministration())->deleteRole(AuthenticationMiddleware::actor(), $id);
         $response->json(['deleted' => true, 'id' => $id]);
     }
 
-    private static function actor(): Actor
+    private static function viewerId(): string
     {
-        return Actor::account(AuthenticationMiddleware::current()->account->publicUserId);
+        return AuthenticationMiddleware::current()->account->publicUserId;
     }
 }
