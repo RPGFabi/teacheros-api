@@ -11,8 +11,10 @@ use Hoelzle\Core\Debug\Debugger;
 use Hoelzle\Core\Http\CorsHandler;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
-use Hoelzle\Core\Routing\Router;
+use TeacherOS\Modules\Accounts\AccountsController;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
+use TeacherOS\Shared\Security\PermissionCatalog;
+use TeacherOS\Shared\Security\RequirePermission;
 
 final class AppBootstrap
 {
@@ -30,7 +32,7 @@ final class AppBootstrap
         }
 
         try {
-            $router = new Router();
+            $router = new ApiRouter();
             self::registerRoutes($router);
             $router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $_SERVER['REQUEST_URI'] ?? '/');
         } catch (\Throwable $e) {
@@ -40,10 +42,15 @@ final class AppBootstrap
         }
     }
 
-    private static function registerRoutes(Router $router): void
+    private static function registerRoutes(ApiRouter $router): void
     {
         $router->get('/api/health', [self::class, 'health']);
-        $router->get('/api/me', [self::class, 'me'], [[AuthenticationMiddleware::class, 'handle']]);
+        $authenticated = [[AuthenticationMiddleware::class, 'handle']];
+        $router->get('/api/me', [self::class, 'me'], $authenticated);
+
+        $router->get('/api/accounts', [AccountsController::class, 'index'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
+        $router->post('/api/accounts/invitations', [AccountsController::class, 'invite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
+        $router->post('/api/accounts/:id/reinvite', [AccountsController::class, 'reinvite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
     }
 
     public static function me(Request $request, Response $response): void
@@ -52,9 +59,10 @@ final class AppBootstrap
         $response->json([
             'account' => [
                 'id' => $session->account->publicUserId,
-                'status' => $session->account->status,
+                'status' => $session->account->status->value,
                 'mfa_required' => $session->account->mfaRequired,
             ],
+            'permissions' => PermissionCatalog::effectiveFor($session->account->publicUserId),
             'session' => [
                 'used_mfa' => $session->token->usedMfa,
                 'expires_at' => gmdate('c', $session->token->expiresAt),

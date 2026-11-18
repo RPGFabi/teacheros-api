@@ -31,9 +31,10 @@ final class HttpTestApp
     }
 
     /** @return array{status:int, body:string, json:?array} */
-    public function request(string $method, string $uri, array $env = []): array
+    public function request(string $method, string $uri, array $env = [], ?array $json = null): array
     {
         $cgi = getenv('TEST_PHP_CGI') ?: dirname(PHP_BINARY) . DIRECTORY_SEPARATOR . (PHP_OS_FAMILY === 'Windows' ? 'php-cgi.exe' : 'php-cgi');
+        $body = $json === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
         $env = array_merge($this->env(), [
             'REQUEST_METHOD' => $method,
             'REQUEST_URI' => $uri,
@@ -41,8 +42,11 @@ final class HttpTestApp
             'REDIRECT_STATUS' => '200',
             'GATEWAY_INTERFACE' => 'CGI/1.1',
             'SERVER_PROTOCOL' => 'HTTP/1.1',
+        ], $body === '' ? [] : [
+            'CONTENT_TYPE' => 'application/json',
+            'CONTENT_LENGTH' => (string) strlen($body),
         ], $env);
-        [$code, $out] = $this->run([$cgi, '-q'], $env);
+        [$code, $out] = $this->run([$cgi, '-q'], $env, $body);
         [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
         $status = 200;
         if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
@@ -101,12 +105,66 @@ final class HttpTestApp
 
     public function resetAccounts(): void
     {
+        $this->pdo()->exec('DELETE FROM `permission_user_roles`');
+        $this->pdo()->exec('DELETE FROM `permission_user_overrides`');
         $this->pdo()->exec('DELETE FROM `accounts`');
+        $this->pdo()->exec('DELETE FROM `audit_log`');
     }
 
-    public function createAccount(string $publicUserId, string $status = 'active'): void
+    /** Vergibt eine vorhandene Rolle direkt in der DB (Testaufbau, nicht der fachliche Weg). */
+    public function assignRole(string $publicUserId, string $roleKey): void
     {
-        $this->pdo()->prepare('INSERT INTO `accounts` (`public_user_id`, `status`) VALUES (?, ?)')->execute([$publicUserId, $status]);
+        $this->pdo()->prepare('INSERT INTO `permission_user_roles` (`user_uuid`, `role_id`) SELECT ?, `id` FROM `permission_roles` WHERE `role_key` = ?')->execute([$publicUserId, $roleKey]);
+    }
+
+    /** Gibt einem Konto ein einzelnes Recht direkt (Testaufbau, nicht der fachliche Weg). */
+    public function grantPermission(string $publicUserId, string $permission): void
+    {
+        $this->pdo()->prepare("INSERT INTO `permission_user_overrides` (`user_uuid`, `permission`, `mode`) VALUES (?, ?, 'added')")->execute([$publicUserId, $permission]);
+    }
+
+    /** Setzt die Migrationen dieser Rechte-Grundlage zurueck und fuehrt sie erneut aus (Wiederholbarkeit). */
+    public function rerunMigrations(string ...$files): void
+    {
+        $stmt = $this->pdo()->prepare('DELETE FROM `_setup_migrations` WHERE `filename` = ?');
+        foreach ($files as $file) {
+            $stmt->execute([$file]);
+        }
+        $this->migrate();
+    }
+
+    public function createAccount(string $publicUserId, string $status = 'active', ?string $email = null, ?string $loginName = null): void
+    {
+        $this->pdo()->prepare('INSERT INTO `accounts` (`public_user_id`, `status`, `email`, `login_name`) VALUES (?, ?, ?, ?)')
+            ->execute([$publicUserId, $status, $email, $loginName ?? $email ?? $publicUserId]);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function accounts(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `accounts` ORDER BY `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function auditLog(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `audit_log` ORDER BY `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Fuehrt ein CLI-Skript der API (z. B. bin/invite-first-admin.php) als Unterprozess
+     * gegen die Test-DB aus; $env ergaenzt/ueberschreibt die Umgebung (z. B. AuthStub::env()).
+     *
+     * @param list<string> $args
+     * @return array{code:int, out:string, err:string}
+     */
+    public function cli(string $script, array $args = [], array $env = []): array
+    {
+        $full = array_merge(getenv(), $this->env(), $env);
+        $p = proc_open([PHP_BINARY, $this->root . '/' . $script, ...$args], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->root, $full);
+        $out = stream_get_contents($pipes[1]);
+        $err = stream_get_contents($pipes[2]);
+        return ['code' => proc_close($p), 'out' => $out, 'err' => $err];
     }
 
     public function setAccountStatus(string $publicUserId, string $status): void
@@ -115,10 +173,12 @@ final class HttpTestApp
     }
 
     /** @return array{int,string} */
-    private function run(array $cmd, array $env): array
+    private function run(array $cmd, array $env, string $stdin = ''): array
     {
         $full = array_merge(getenv(), $env);
-        $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->root, $full);
+        $p = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->root, $full);
+        fwrite($pipes[0], $stdin);
+        fclose($pipes[0]);
         $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
         return [proc_close($p), $out];
     }

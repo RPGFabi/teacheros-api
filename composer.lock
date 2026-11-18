@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "bc931ce48c4c6d735340995c338a7ac3",
+    "content-hash": "48e60e1c4e5338f856eee533f693b3c5",
     "packages": [
         {
             "name": "graham-campbell/result-type",
@@ -120,6 +120,54 @@
                 "issues": "https://github.com/RPGFabi/PHP-Core/issues"
             },
             "time": "2026-11-14T18:18:16+00:00"
+        },
+        {
+            "name": "hoelzle/php-permissions",
+            "version": "v2.1.0",
+            "source": {
+                "type": "git",
+                "url": "git@github.com:RPGFabi/PHP-Permissions.git",
+                "reference": "8868c2365472f8a580f3b8e6f3a7edd224164a55"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/RPGFabi/PHP-Permissions/zipball/8868c2365472f8a580f3b8e6f3a7edd224164a55",
+                "reference": "8868c2365472f8a580f3b8e6f3a7edd224164a55",
+                "shasum": ""
+            },
+            "require": {
+                "hoelzle/php-core": "^2.5",
+                "php": ">=8.4"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Hoelzle\\Permissions\\": "src/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "phpunit --no-configuration --bootstrap tests/bootstrap.php tests"
+                ]
+            },
+            "license": [
+                "proprietary"
+            ],
+            "authors": [
+                {
+                    "name": "RPGFabi",
+                    "email": "35190886+RPGFabi@users.noreply.github.com"
+                }
+            ],
+            "description": "Reusable role and permission handling module for PHP applications.",
+            "support": {
+                "source": "https://github.com/RPGFabi/PHP-Permissions/tree/v2.1.0",
+                "issues": "https://github.com/RPGFabi/PHP-Permissions/issues"
+            },
+            "time": "2026-11-14T11:25:42+00:00"
         },
         {
             "name": "phpoption/phpoption",

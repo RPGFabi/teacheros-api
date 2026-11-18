@@ -3,11 +3,13 @@
   "description": "TeacherOS API backend",
   "type": "project",
   "repositories": [
-    { "type": "vcs", "url": "https://github.com/RPGFabi/PHP-Core.git" }
+    { "type": "vcs", "url": "https://github.com/RPGFabi/PHP-Core.git" },
+    { "type": "vcs", "url": "https://github.com/RPGFabi/PHP-Permissions.git" }
   ],
   "require": {
     "php": ">=8.4",
-    "hoelzle/php-core": "^2.5.1"
+    "hoelzle/php-core": "^2.5.1",
+    "hoelzle/php-permissions": "^2.1"
   },
   "require-dev": {
     "phpunit/phpunit": "^11.0"

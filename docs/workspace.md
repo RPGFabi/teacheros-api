@@ -20,7 +20,7 @@ Lokal liegen alle Repos unter `D:\Programming\TeacherOS\apps\` bzw. `D:\Programm
 
 ## Lokale Auth-Instanz (Dev-Schule)
 
-Jede Schule hat eine eigene `jwt-auth-service`-Instanz mit eigener Datenbank, eigenem RS256-Schlüsselpaar und eigenem `iss`/`aud` (ADR 0002 „Grundsatz“). Für die Entwicklungsschule richtet `scripts/auth-instance.sh` sie reproduzierbar ein (`iss=https://auth.dev-schule.teacheros.test`, `aud=teacheros:dev-schule`, `REGISTRATION_DISABLED=true`, Mail-Branding „Dev-Schule“). Das Skript ist die Vorlage für die spätere Provisionierung pro Schule.
+Jede Schule hat eine eigene `jwt-auth-service`-Instanz mit eigener Datenbank, eigenem RS256-Schlüsselpaar und eigenem `iss`/`aud` (ADR 0002 „Grundsatz“). Für die Entwicklungsschule richtet `scripts/auth-instance.sh` sie reproduzierbar ein (`iss=https://auth.dev-schule.teacheros.test`, `aud=teacheros:dev-schule`, `REGISTRATION_DISABLED=true`, `INVITE_ENABLED=true`, `USERNAME_LOGIN_ENABLED=true`, Mail-Branding „Dev-Schule“). Das Skript ist die Vorlage für die spätere Provisionierung pro Schule.
 
 Voraussetzungen: PHP >= 8.4 (sodium, openssl, pdo_mysql) im `PATH`, MariaDB auf `127.0.0.1:3306` mit Root-Zugang (Standard `root`/`teacheros-root`, wie in `docker-compose.yml`) und ein Auth-Checkout mit installierten Abhängigkeiten (`composer install`).
 
@@ -34,11 +34,45 @@ curl -s -X POST http://127.0.0.1:8100/login -H 'Content-Type: application/json' 
 
 - `setup` ist gefahrlos wiederholbar: vorhandene Schlüssel und `.env` bleiben unverändert, DB und Nutzer werden nur angelegt bzw. angeglichen, Migrationen laufen idempotent.
 - Die Instanz läuft aus einer Kopie des Checkouts unter `~/.teacheros/auth/dev-schule/` (Variable `AUTH_INSTANCE_DIR`), weil der Dienst seinen privaten Schlüssel fest unter `<Wurzel>/auth_private.pem` erwartet. Schlüssel und `.env` liegen damit außerhalb beider Repos; nichts davon wird committet. Nach Änderungen am Auth-Checkout `setup` erneut ausführen und neu starten.
-- Der öffentliche Schlüssel (`auth_public.pem` im Instanzordner) sowie `iss`/`aud` landen in der gitignorierten `.env` der API: `AUTH_PUBLIC_KEY_PATH`, `AUTH_TOKEN_ISSUER`, `AUTH_TOKEN_AUDIENCE`, `AUTH_BASE_URL` (Vorlage in `.env.example`). Das Backend prüft Signatur, `iss` und `aud` damit gegen **seine** Schule.
+- Der öffentliche Schlüssel (`auth_public.pem` im Instanzordner) sowie `iss`/`aud` landen in der gitignorierten `.env` der API: `AUTH_PUBLIC_KEY_PATH`, `AUTH_TOKEN_ISSUER`, `AUTH_TOKEN_AUDIENCE`, `AUTH_SERVICE_URL` und `AUTH_SERVICE_WEBHOOK_SECRET` für die signierten internen Aufrufe (Vorlage in `.env.example`). Das Backend prüft Signatur, `iss` und `aud` damit gegen **seine** Schule.
 - Ohne Redis (lokal nicht vorhanden) wird das Rate Limiting der Auth-Instanz durch `scripts/auth-redis-stub.php` ersetzt (`AUTH_REDIS_MODE=fake`, Standard). Mit Redis (`docker compose --profile optional up -d`) `AUTH_REDIS_MODE=real` setzen und `REDIS_*` in der Instanz-`.env` anpassen.
 - Weitere Variablen: `AUTH_PORT` (8100), `AUTH_SCHOOL_SLUG`/`AUTH_SCHOOL_NAME`, `AUTH_DB_*`, `AUTH_DB_ROOT_USER`/`AUTH_DB_ROOT_PASSWORD`, `API_ENV_FILE`.
 - Test: `AUTH_SERVICE_PATH=... tests/e2e/auth-instance.sh` richtet eine Wegwerf-Instanz ein, legt ein Konto an, loggt sich ein und prüft Signatur, `iss` und `aud` des JWT.
 - Auf Rechnern mit Docker bleibt `docker-compose.yml` die Referenz für MariaDB (und optional Redis); das Skript funktioniert mit jeder erreichbaren MariaDB.
+
+## Erster Schuladmin (Ticket #25)
+
+Eine neue Schulinstanz hat kein Konto. Der Betreiber lädt den ersten Schuladmin per CLI ein (Auth-Instanz mit `INVITE_ENABLED=true` und API-Config `AUTH_SERVICE_URL`, `AUTH_SERVICE_WEBHOOK_SECRET`, siehe oben):
+
+```bash
+php bin/invite-first-admin.php --email=admin@schule.example [--login-name=name] [--allow-additional-admin]
+```
+
+- Die Person erhält die Mail mit Link auf `<FRONTEND>/einladung?token=…`, setzt dort ihr Passwort (direkt beim Anmeldedienst) und meldet sich an; dabei wird das Konto `aktiv`.
+- Nur mit `--login-name` (ohne `--email`, Ticket #28) geht keine Mail raus: der Befehl gibt den Einladungscode **einmal** auf der Konsole aus (`Einladungscode (wird nur jetzt angezeigt): XXXX-XXXX-XXXX`), die Person tippt ihn auf `<FRONTEND>/einladung` ein. Die Auth-Instanz braucht dafür `USERNAME_LOGIN_ENABLED=true` (sonst `400 username_login_disabled`, Exit 4).
+- Ist schon ein **aktiver** Schuladmin vorhanden, lehnt der Befehl ab (Exit 3, `admin_exists`), außer mit `--allow-additional-admin`. Ein nur eingeladener Admin lässt sich ohne Option erneut einladen, auch an eine andere Adresse: die frühere Einladung wird dann beim Anmeldedienst gelöscht und lokal ersetzt.
+- Exit-Codes: 0 ok, 2 Aufruf falsch, 3 fachlich abgelehnt (`admin_exists`, `already_active`, `account_inactive`, `username_taken`, `email_taken`, dazu die fachlichen Ablehnungen des Anmeldedienstes wie `invalid_username`, `username_login_disabled`, `account_disabled`, `invalid_request`), 4 Anmeldedienst nicht verfügbar (`auth_unavailable`: Netzwerkfehler, Zeitüberschreitung, 5xx, unlesbare Antwort; es bleibt kein halber Zustand, Wiederholung ist gefahrlos).
+- Nach dem Code gibt die CLI `Gueltig bis: <ISO 8601>` aus, sobald der Anmeldedienst ein Ablaufdatum nennt.
+- Audit-Einträge (`account.invited`/`account.reinvited`, `role.assigned`, später `account.activated`) tragen den Akteur `cli` und keine E-Mail-Adresse. Wird eine nie angenommene Einladung ersetzt, bekommt das gelöschte Konto einen eigenen Eintrag `account.invitation_withdrawn` (Objekt = altes Konto, dazu `role.revoked`).
+
+Tests: HTTP und CLI laufen gegen den **Auth-Stub** (`tests/Support/AuthStub.php`, `php -S` an der Netzwerkgrenze, über `AUTH_SERVICE_URL` erreichbar). Er prüft die Signatur wie der echte Dienst, zeichnet Aufrufe auf (`calls()`, `inviteCalls()`) und antwortet nach Skript (`script('invite', ['status' => 500])`, `['delay' => 2.0]` für Timeouts (der API-Timeout im Test ist 0,5 s; `calls()` danach abwarten, `php -S` bedient nacheinander), `['raw' => '<html>']` für eine unlesbare Antwort, `['body' => [...]]` für `already_active`, `username`, `invite_code`, `expires_at`, fachliche Fehler mit `code`). `AuthStub::env()` liefert die Umgebung für `HttpTestApp::cli()`. E2E gegen eine echte Wegwerf-Instanz: `AUTH_SERVICE_PATH=... tests/e2e/first-admin-invite.sh`.
+
+## Konten im Web (Ticket #26)
+
+Schuladmins (Recht `accounts.view` bzw. `accounts.invite`, nicht die Rolle) verwalten Einladungen über die API; alle Endpunkte brauchen ein gültiges Token. Fehler mit Code antworten als `{"error": "...", "code": "..."}` (zentral im `ApiRouter`, nicht pro Endpunkt).
+
+| Endpunkt | Recht | Antwort |
+|---|---|---|
+| `GET /api/accounts` | `accounts.view` | `200 {"accounts": [{id, email, login_name, status, invited_at}]}` (`invited_at` ISO 8601 UTC oder `null`) |
+| `POST /api/accounts/invitations` `{email?, login_name?}` (mindestens eins) | `accounts.invite` | `201 {"account": {...}, "invite_code": null, "invite_expires_at": "…"}`; ohne E-Mail steht der Code einmalig in `invite_code` |
+| `POST /api/accounts/{id}/reinvite` | `accounts.invite` | `200`, gleiche Form; `{id}` ist die `public_user_id` |
+
+- Codes: `403 forbidden`; `400 identifier_required`/`invalid_email`/`invalid_username`/`username_login_disabled`/`invalid_request`; `404 account_not_found`; `409 already_active`/`account_inactive`/`account_disabled`/`username_taken`/`email_taken`; `502 auth_unavailable` (nichts wird lokal angelegt, Wiederholung ist gefahrlos). `502` gibt es nur bei Netzwerkfehler, Zeitüberschreitung, 5xx und unlesbarer Antwort des Anmeldedienstes; seine fachlichen 4xx mit `code` gibt die API mit Status und Code weiter (ein 400 ohne Code wird `invalid_request`).
+- E-Mail und Anmeldename normalisiert die API auf Kleinschreibung (Web und CLI gleich).
+- Die E-Mail eines noch nicht angenommenen Kontos erneut einzuladen ist eine erneute Einladung desselben Kontos (`account.reinvited`); mit anderem Anmeldenamen als gespeichert ergibt es `email_taken`.
+- Audit-Eintrag (`account.invited`/`account.reinvited`) mit Akteur `account` und dem einladenden Konto, ohne E-Mail. `invite_code` reicht die API nur aus dem Ergebnis des Anmeldedienstes durch und speichert ihn nicht (weder Konto noch Audit).
+- Einladen ohne E-Mail (Ticket #28): `{"login_name": "schueler.eins"}` legt ein Konto ohne E-Mail an. Erneut einladen eines Kontos ohne E-Mail liefert einen neuen Code und macht den vorigen ungültig. `invite_expires_at` (ISO 8601, UTC) nennt, bis wann die Einladung gilt; die API reicht es vom Anmeldedienst durch, ohne es zu speichern (`null`, wenn er keins nennt). Die Einladungskarte zeigt es als „gültig bis“.
+- Die Web-Seite zeigt den Code auf einer druckbaren Einladungskarte (10 × 3 cm, QR-Code auf `<Web-Origin>/einladung?code=…`, A4-Raster 2 × 9 über `@media print`). E2E: `tests/e2e/first-admin-invite.sh` spielt auch den Durchlauf per Anmeldename und Code durch (CLI und API, Anmeldedienst mit G6).
 
 ## Weiterführend
 
