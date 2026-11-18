@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace TeacherOS\Shared\Security;
 
-use Hoelzle\Permissions\EffectivePermissions;
 use Hoelzle\Permissions\UserPermissionService;
 use TeacherOS\Shared\Exceptions\CodedException;
 
@@ -17,7 +16,7 @@ use TeacherOS\Shared\Exceptions\CodedException;
  */
 final class RoleAssignmentRules
 {
-    private readonly EffectivePermissions $actor;
+    private readonly ActorPermissions $actor;
     private readonly UserPermissionService $service;
 
     /**
@@ -26,12 +25,10 @@ final class RoleAssignmentRules
      * @param bool $lockAdmins true beim Ausfuehren (in der Transaktion): P3 sperrt den Kreis der Schuladmins ({@see LastAdminGuard});
      *                         false in der Lesesicht, die nichts sperrt
      */
-    public function __construct(private readonly ?string $actorId, private readonly array $rolesById, private readonly bool $lockAdmins = false)
+    public function __construct(?string $actorId, private readonly array $rolesById, private readonly bool $lockAdmins = false)
     {
         $this->service = PermissionCatalog::service();
-        $this->actor = $actorId === null
-            ? new EffectivePermissions(true, [], [])
-            : $this->service->forUser($actorId);
+        $this->actor = new ActorPermissions($actorId);
     }
 
     /**
@@ -42,8 +39,8 @@ final class RoleAssignmentRules
      */
     public function refusal(string $targetId, array $role, bool $assign): ?CodedException
     {
-        if (!$this->actor->hasWildcard) {
-            if ($assign && $targetId === $this->actorId) {
+        if ($this->actor->isBoundByP2()) {
+            if ($assign && $this->actor->isSelf($targetId)) {
                 return new CodedException('self_escalation', 403, 'Sie können sich selbst keine Rolle geben.');
             }
             if (!$this->actorHoldsAll($role)) {
@@ -62,12 +59,7 @@ final class RoleAssignmentRules
         if ($role['all_permissions']) {
             return false;
         }
-        foreach ($role['permissions'] as $permission) {
-            if (!$this->actor->can($permission)) {
-                return false;
-            }
-        }
-        return true;
+        return $this->actor->canAll($role['permissions']);
     }
 
     /** @param array<string,mixed> $role */

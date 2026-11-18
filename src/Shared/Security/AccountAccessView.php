@@ -30,7 +30,7 @@ final class AccountAccessView
         $account = $this->accounts->findByPublicUserId($accountId)
             ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
         $access = PermissionCatalog::service()->getUserAccess($accountId);
-        $roles = array_column((new RoleOverview())->list(), null, 'id');
+        $roles = (new RoleOverview())->byId();
         $held = array_flip($access['role_ids']);
 
         $rules = new RoleAssignmentRules($viewerId, $roles);

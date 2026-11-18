@@ -24,6 +24,12 @@ final class AuthenticationMiddleware
         return self::$current ?? throw new \LogicException('Kein authentifizierter Request');
     }
 
+    /** Der angemeldete Account als Akteur auditierter Handlungen. */
+    public static function actor(): Actor
+    {
+        return Actor::account(self::current()->account->publicUserId);
+    }
+
     public static function handle(Request $request, Response $response): bool
     {
         self::$current = null;

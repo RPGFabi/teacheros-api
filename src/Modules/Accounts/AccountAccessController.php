@@ -13,8 +13,9 @@ use TeacherOS\Shared\Security\AccountAccessView;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 
 /**
- * Zuweisungen eines Kontos (Ticket #34): Kontodetail lesen (eines der drei Verwaltungsrechte), Rollen einzeln
- * vergeben und entziehen (`roles.assign`, das prueft die Route). Fehler mit Code uebersetzt der ApiRouter.
+ * Zuweisungen eines Kontos (Ticket #34): Kontodetail lesen (`accounts.view` und eines der drei Verwaltungsrechte),
+ * Rollen einzeln vergeben und entziehen (`roles.assign`), Einzelrechte gewaehren, entziehen und zuruecksetzen
+ * (`permissions.assign`); das prueft jeweils die Route. Fehler mit Code uebersetzt der ApiRouter.
  * Alle Aenderungen laufen ueber {@see AccessAdministration}; jede Antwort ist die aktuelle Lesesicht.
  */
 final class AccountAccessController
@@ -30,39 +31,41 @@ final class AccountAccessController
         if (!is_string($roleId) || trim($roleId) === '') {
             throw new CodedException('role_required', 400, 'Bitte eine Rolle angeben.');
         }
-        $accountId = (string) $request->getParam('id');
-        (new AccessAdministration())->assignRole(self::actor(), $accountId, trim($roleId));
-        $response->json(self::view($accountId));
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->assignRole($actor, $accountId, trim($roleId)));
     }
 
     public static function revoke(Request $request, Response $response): void
     {
-        $accountId = (string) $request->getParam('id');
-        (new AccessAdministration())->revokeRole(self::actor(), $accountId, (string) $request->getParam('roleId'));
-        $response->json(self::view($accountId));
+        $roleId = (string) $request->getParam('roleId');
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->revokeRole($actor, $accountId, $roleId));
     }
 
-    /** Einzelrecht gewaehren (Ticket #36); `permissions.assign` prueft die Route. */
+    /** Einzelrecht gewaehren (Ticket #36). */
     public static function grantPermission(Request $request, Response $response): void
     {
-        $accountId = (string) $request->getParam('id');
-        (new AccessAdministration())->grantPermission(self::actor(), $accountId, self::permissionFrom($request));
-        $response->json(self::view($accountId));
+        $permission = self::permissionFrom($request);
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->grantPermission($actor, $accountId, $permission));
     }
 
-    /** Einzelrecht entziehen (trotz Rolle, Ticket #36); `permissions.assign` prueft die Route. */
+    /** Einzelrecht entziehen, trotz Rolle (Ticket #36). */
     public static function withdrawPermission(Request $request, Response $response): void
     {
-        $accountId = (string) $request->getParam('id');
-        (new AccessAdministration())->withdrawPermission(self::actor(), $accountId, self::permissionFrom($request));
-        $response->json(self::view($accountId));
+        $permission = self::permissionFrom($request);
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->withdrawPermission($actor, $accountId, $permission));
     }
 
     /** Einzelrecht zuruecksetzen (Ticket #36): es gilt wieder, was die Rollen ergeben. */
     public static function clearPermission(Request $request, Response $response): void
     {
+        $permission = self::permissionFrom($request);
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->clearPermissionOverride($actor, $accountId, $permission));
+    }
+
+    /** Fuehrt eine Aenderung am Konto der Route aus und antwortet mit der aktuellen Lesesicht. @param callable(Actor, string): void $change */
+    private static function change(Request $request, Response $response, callable $change): void
+    {
         $accountId = (string) $request->getParam('id');
-        (new AccessAdministration())->clearPermissionOverride(self::actor(), $accountId, self::permissionFrom($request));
+        $change(AuthenticationMiddleware::actor(), $accountId);
         $response->json(self::view($accountId));
     }
 
@@ -79,10 +82,5 @@ final class AccountAccessController
     private static function view(string $accountId): array
     {
         return (new AccountAccessView())->for($accountId, AuthenticationMiddleware::current()->account->publicUserId);
-    }
-
-    private static function actor(): Actor
-    {
-        return Actor::account(AuthenticationMiddleware::current()->account->publicUserId);
     }
 }

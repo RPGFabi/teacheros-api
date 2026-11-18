@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace TeacherOS\Shared\Security;
 
-use Hoelzle\Permissions\EffectivePermissions;
 use Hoelzle\Permissions\UserPermissionService;
 use TeacherOS\Shared\Exceptions\CodedException;
 
@@ -25,19 +24,17 @@ final class PermissionOverrideRules
     /** Einzelrecht zuruecksetzen: es gilt wieder, was die Rollen ergeben. */
     public const CLEAR = 'clear';
 
-    private readonly EffectivePermissions $actor;
+    private readonly ActorPermissions $actor;
     private readonly UserPermissionService $service;
 
     /**
      * @param string|null $actorId Konto des Akteurs; null = Betreiber (CLI), von P2 ausgenommen wie ein Wildcard-Konto
      * @param array<string,array<string,mixed>> $rolesById Zeilen von {@see RoleOverview::list()} nach Rollen-ID
      */
-    public function __construct(private readonly ?string $actorId, private readonly array $rolesById)
+    public function __construct(?string $actorId, private readonly array $rolesById)
     {
         $this->service = PermissionCatalog::service();
-        $this->actor = $actorId === null
-            ? new EffectivePermissions(true, [], [])
-            : $this->service->forUser($actorId);
+        $this->actor = new ActorPermissions($actorId);
     }
 
     /**
@@ -53,8 +50,8 @@ final class PermissionOverrideRules
         if (!in_array($permission, PermissionCatalog::all(), true)) {
             return new CodedException('unknown_permission', 400, 'Dieses Recht gibt es nicht.');
         }
-        if (!$this->actor->hasWildcard) {
-            if ($targetId === $this->actorId) {
+        if ($this->actor->isBoundByP2()) {
+            if ($this->actor->isSelf($targetId)) {
                 return new CodedException('self_escalation', 403, 'Sie können sich selbst keine Einzelrechte geben, entziehen oder zurücksetzen.');
             }
             if (!$this->actor->can($permission)) {
