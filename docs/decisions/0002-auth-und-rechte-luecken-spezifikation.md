@@ -236,6 +236,20 @@ Der `AccessAdministration`-Service ist der **einzige** Weg zu `UserPermissionSer
 - **P6 – exklusive Schülerrolle (Nachtrag, Ticket #10):** Ein Konto mit der Rolle Schüler/in hat keine weitere Rolle und keine Einzelrechte (keine Overrides); die Rechte der Schülerrolle selbst sind nicht über die Rechteverwaltung änderbar. Verstoß ergibt 409 `{"code": "student_role_exclusive"}`. Durchgesetzt im `AccessAdministration`-Service.
 - **P3 – letzter Admin:** Entzieht eine Aktion dem letzten **aktiven** Konto die Schuladmin-Rolle oder deaktiviert sie es, wird sie mit `409 {"code": "last_admin"}` abgelehnt. Die Prüfung läuft in derselben Transaktion mit `SELECT ... FOR UPDATE`.
 
+**Nachtrag (Klärung zu Ticket #11, 2026-11-18):**
+- **Standardrollen:** Das Setup legt idempotent `schuladmin` (System-Rolle mit Wildcard), `schueler` (geschützt, Rechte kommen aus dem Code), `lehrkraft`, `erziehungsberechtigte`, `sekretariat` und `schulleitung` an. Die letzten vier haben frei änderbare Rechte und starten leer. Keine Standardrolle ist löschbar. Wer `schuladmin` oder `schueler` bearbeitet oder eine Standardrolle löscht, erhält 409 `role_protected`. Selbst angelegte Rollen erhalten einen zufälligen, unveränderlichen Schlüssel. Beim tatsächlichen Anlegen schreibt das Setup `role.created` mit Akteur `cli`.
+- **Löschen:** Eine Rolle, die noch einem Konto zugewiesen ist, wird nicht gelöscht: 409 `role_in_use`. Das Cascade des Pakets greift damit nie.
+- **„Erfordert MFA“** ist ein Merkmal der Rolle, das die Anwendung neben dem Paket führt. Es ist faktorneutral (V1: TOTP, später Passkeys). Fest an bei `schuladmin`, `lehrkraft`, `sekretariat` und `schulleitung`; fest aus bei `schueler` und `erziehungsberechtigte`. Selbst angelegte Rollen sind standardmäßig an und abschaltbar. `accounts.mfa_required` ist das ODER über alle Rollen des Kontos und wird in derselben Transaktion neu berechnet, sobald sich Rollen oder das Merkmal ändern. Spiegeln (G2) und Erzwingen (B3) gehören nicht zu #11.
+- **P2 im Detail** (alles 403; ein Konto mit Wildcard ist ausgenommen):
+  - *Rolle bearbeiten:* Hinzufügen darf man nur Rechte, die man selbst effektiv besitzt (`permission_not_held`). Eine Rolle, die man selbst innehat, darf man nicht erweitern (`self_escalation`). Entfernen ist immer erlaubt.
+  - *Rolle vergeben und entziehen (symmetrisch):* nur, wenn man **alle** Rechte der Rolle selbst besitzt (`permission_not_held`). Sich selbst eine Rolle geben ergibt `self_escalation`. Deshalb vergeben und entziehen nur Schuladmins die Rolle Schuladmin.
+  - *Einzelrecht gewähren, entziehen oder zurücksetzen:* nur, wer das Recht selbst besitzt (`permission_not_held`). Das Zurücksetzen eines entzogenen Einzelrechts gibt das Recht über die Rolle zurück und zählt als Gewähren. Sich selbst Einzelrechte geben ergibt `self_escalation`.
+- **Schuladmin ohne Einzelrechte:** Konten mit der Rolle Schuladmin haben keine Einzelrechte. Wer eines setzt oder einem Konto mit Einzelrechten die Rolle gibt, erhält 409 `admin_overrides_forbidden`. Ein Schuladmin ohne `roles.assign` würde P3 sonst aushebeln.
+- **P3** zählt nur Konten mit Status `aktiv`. Ein nur eingeladener zweiter Admin hebt die Sperre nicht auf. Die Prüfung ist ein wiederverwendbarer Baustein von `AccessAdministration`, den später auch die Deaktivierung nutzt.
+- **Lesen:** Rollen, Rechte-Katalog und die Zuweisungen eines Kontos sind mit einem der drei Verwaltungsrechte lesbar, ein `roles.view` gibt es nicht. Der Katalog führt zu jedem Recht einen deutschen Namen und eine Gruppe.
+- **Schnittstelle:** Einzeloperationen pro Rolle und pro Einzelrecht, kein Gesamt-Ersetzen der Zuweisungen eines Kontos.
+- **Audit-Handlungen:** `role.created`, `role.updated` (hinzugefügte und entfernte Rechte), `role.deleted`, `role.assigned`, `role.revoked`, `permission.granted`, `permission.withdrawn`, `permission.override_cleared`. Details: Rollenschlüssel und Rollenname zum Zeitpunkt der Handlung bzw. Rechte-Schlüssel und Modus.
+
 **Pflichttests:**
 - Ein Verwalter mit nur `roles.assign` kann keine Rolle ändern.
 - Ein Verwalter kann sich selbst kein Recht geben.
