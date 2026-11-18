@@ -158,8 +158,8 @@ final class RoleManagementTest extends TestCase
 
         $calls = [
             ['POST', '/api/roles', ['name' => 'Neu', 'permissions' => []]],
-            ['PATCH', '/api/roles/' . $role['id'], ['name' => 'Umbenannt']],
-            ['DELETE', '/api/roles/' . $role['id'], null],
+            ['POST', '/api/roles/' . $role['id'] . '/update', ['name' => 'Umbenannt']],
+            ['POST', '/api/roles/' . $role['id'] . '/delete', null],
         ];
         foreach ($calls as [$method, $uri, $body]) {
             $r = $this->call($method, $uri, $body, self::ASSIGNER);
@@ -173,8 +173,8 @@ final class RoleManagementTest extends TestCase
     public function testOhneTokenKommt401(): void
     {
         $this->assertSame(401, $this->app->request('POST', '/api/roles', [], ['name' => 'X'])['status']);
-        $this->assertSame(401, $this->app->request('PATCH', '/api/roles/x', [], ['name' => 'X'])['status']);
-        $this->assertSame(401, $this->app->request('DELETE', '/api/roles/x')['status']);
+        $this->assertSame(401, $this->app->request('POST', '/api/roles/x/update', [], ['name' => 'X'])['status']);
+        $this->assertSame(401, $this->app->request('POST', '/api/roles/x/delete')['status']);
     }
 
     // --- P2 beim Anlegen ---
@@ -197,7 +197,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->create(['permissions' => ['accounts.view', 'accounts.invite']]);
 
-        $r = $this->call('PATCH', '/api/roles/' . $role['id'], ['name' => 'Neuer Name', 'description' => '', 'permissions' => ['accounts.invite', 'roles.assign']]);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['name' => 'Neuer Name', 'description' => '', 'permissions' => ['accounts.invite', 'roles.assign']]);
 
         $this->assertSame(200, $r['status'], $r['body']);
         $updated = $r['json']['role'];
@@ -213,7 +213,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->create(['permissions' => ['accounts.view']]);
 
-        $r = $this->call('PATCH', '/api/roles/' . $role['id'], ['name' => 'Nur Name']);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['name' => 'Nur Name']);
 
         $this->assertSame(200, $r['status'], $r['body']);
         $this->assertSame('Leitet einen Fachbereich', $r['json']['role']['description']);
@@ -225,7 +225,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->create(['permissions' => ['accounts.view', 'accounts.invite']]);
 
-        $this->call('PATCH', '/api/roles/' . $role['id'], ['name' => 'Neuer Name', 'permissions' => ['accounts.invite', 'roles.assign']]);
+        $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['name' => 'Neuer Name', 'permissions' => ['accounts.invite', 'roles.assign']]);
 
         $entries = $this->audit('role.updated');
         $this->assertCount(1, $entries);
@@ -241,7 +241,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->create();
 
-        $r = $this->call('PATCH', '/api/roles/' . $role['id'], ['name' => $role['name'], 'permissions' => $role['permissions'], 'requires_mfa' => true]);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['name' => $role['name'], 'permissions' => $role['permissions'], 'requires_mfa' => true]);
 
         $this->assertSame(200, $r['status'], $r['body']);
         $this->assertCount(0, $this->audit('role.updated'));
@@ -252,7 +252,7 @@ final class RoleManagementTest extends TestCase
         $role = $this->create();
 
         foreach ([['name' => ''], ['permissions' => ['*']], ['permissions' => ['gibt.es.nicht']]] as $body) {
-            $r = $this->call('PATCH', '/api/roles/' . $role['id'], $body);
+            $r = $this->call('POST', '/api/roles/' . $role['id'] . '/update', $body);
             $this->assertSame(400, $r['status'], json_encode($body));
             $this->assertSame('invalid_request', $r['json']['code']);
         }
@@ -261,10 +261,10 @@ final class RoleManagementTest extends TestCase
 
     public function testUnbekannteRolleErgibt404RoleNotFound(): void
     {
-        foreach ([['PATCH', ['name' => 'X']], ['DELETE', null]] as [$method, $body]) {
-            $r = $this->call($method, '/api/roles/00000000-0000-4000-8000-000000000000', $body);
-            $this->assertSame(404, $r['status'], $method);
-            $this->assertSame('role_not_found', $r['json']['code'], $method);
+        foreach ([['update', ['name' => 'X']], ['delete', null]] as [$action, $body]) {
+            $r = $this->call('POST', '/api/roles/00000000-0000-4000-8000-000000000000/' . $action, $body);
+            $this->assertSame(404, $r['status'], $action);
+            $this->assertSame('role_not_found', $r['json']['code'], $action);
         }
     }
 
@@ -281,14 +281,14 @@ final class RoleManagementTest extends TestCase
         $this->app->assignRole(self::MEMBER2, $other['key']);
         $this->app->pdo()->exec('UPDATE `accounts` SET `mfa_required` = 1 WHERE `public_user_id` IN (\'' . self::MEMBER . '\', \'' . self::MEMBER2 . '\')');
 
-        $off = $this->call('PATCH', '/api/roles/' . $role['id'], ['requires_mfa' => false]);
+        $off = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['requires_mfa' => false]);
 
         $this->assertSame(200, $off['status'], $off['body']);
         $this->assertFalse($off['json']['role']['requires_mfa']);
         $this->assertFalse($this->mfaRequired(self::MEMBER), 'einzige Rolle ohne MFA');
         $this->assertTrue($this->mfaRequired(self::MEMBER2), 'ODER ueber alle Rollen: die zweite Rolle verlangt MFA');
 
-        $this->call('PATCH', '/api/roles/' . $role['id'], ['requires_mfa' => true]);
+        $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['requires_mfa' => true]);
         $this->assertTrue($this->mfaRequired(self::MEMBER));
         $this->assertCount(2, $this->audit('role.updated'));
     }
@@ -307,7 +307,7 @@ final class RoleManagementTest extends TestCase
     {
         $before = $this->roleByKey($key);
 
-        $r = $this->call('PATCH', '/api/roles/' . $before['id'], ['name' => 'Anders', 'permissions' => ['accounts.view']]);
+        $r = $this->call('POST', '/api/roles/' . $before['id'] . '/update', ['name' => 'Anders', 'permissions' => ['accounts.view']]);
 
         $this->assertSame(409, $r['status']);
         $this->assertSame('role_protected', $r['json']['code']);
@@ -328,11 +328,11 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->roleByKey($key);
 
-        $ok = $this->call('PATCH', '/api/roles/' . $role['id'], ['permissions' => ['accounts.view'], 'requires_mfa' => $role['requires_mfa']]);
+        $ok = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => ['accounts.view'], 'requires_mfa' => $role['requires_mfa']]);
         $this->assertSame(200, $ok['status'], $ok['body']);
         $this->assertSame(['accounts.view'], $ok['json']['role']['permissions']);
 
-        $mfa = $this->call('PATCH', '/api/roles/' . $role['id'], ['requires_mfa' => !$role['requires_mfa']]);
+        $mfa = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['requires_mfa' => !$role['requires_mfa']]);
         $this->assertSame(409, $mfa['status']);
         $this->assertSame('role_protected', $mfa['json']['code']);
         $this->assertSame($role['requires_mfa'], $this->roleByKey($key)['requires_mfa']);
@@ -344,7 +344,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->create();
 
-        $r = $this->call('PATCH', '/api/roles/' . $role['id'], ['permissions' => ['accounts.view', 'accounts.invite']], self::MANAGER);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => ['accounts.view', 'accounts.invite']], self::MANAGER);
 
         $this->assertSame(403, $r['status']);
         $this->assertSame('permission_not_held', $r['json']['code']);
@@ -357,11 +357,11 @@ final class RoleManagementTest extends TestCase
         $this->app->assignRole(self::MANAGER, $role['key']);
 
         // accounts.view besitzt der Verwalter schon ueber seinen Einzelrechte-Eintrag; trotzdem: eigene Rolle.
-        $extend = $this->call('PATCH', '/api/roles/' . $role['id'], ['permissions' => ['accounts.view', 'roles.manage']], self::MANAGER);
+        $extend = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => ['accounts.view', 'roles.manage']], self::MANAGER);
         $this->assertSame(403, $extend['status']);
         $this->assertSame('self_escalation', $extend['json']['code']);
 
-        $shrink = $this->call('PATCH', '/api/roles/' . $role['id'], ['permissions' => []], self::MANAGER);
+        $shrink = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => []], self::MANAGER);
         $this->assertSame(200, $shrink['status'], $shrink['body']);
         $this->assertSame([], $shrink['json']['role']['permissions']);
     }
@@ -370,7 +370,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->create(['permissions' => ['accounts.view', 'accounts.invite']]);
 
-        $r = $this->call('PATCH', '/api/roles/' . $role['id'], ['permissions' => ['accounts.view']], self::MANAGER);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => ['accounts.view']], self::MANAGER);
 
         $this->assertSame(200, $r['status'], $r['body']);
         $this->assertSame(['accounts.view'], $r['json']['role']['permissions']);
@@ -381,7 +381,7 @@ final class RoleManagementTest extends TestCase
         $role = $this->create(['permissions' => ['accounts.view']]);
         $this->app->assignRole(self::ADMIN, $role['key']);
 
-        $r = $this->call('PATCH', '/api/roles/' . $role['id'], ['permissions' => ['accounts.view', 'roles.manage']]);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => ['accounts.view', 'roles.manage']]);
 
         $this->assertSame(200, $r['status'], $r['body']);
     }
@@ -392,7 +392,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->create();
 
-        $r = $this->call('DELETE', '/api/roles/' . $role['id']);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/delete');
 
         $this->assertSame(200, $r['status'], $r['body']);
         $this->assertNotContains($role['key'], array_column($this->call('GET', '/api/roles')['json']['roles'], 'key'));
@@ -410,7 +410,7 @@ final class RoleManagementTest extends TestCase
         $this->app->createAccount(self::MEMBER, 'active');
         $this->app->assignRole(self::MEMBER, $role['key']);
 
-        $r = $this->call('DELETE', '/api/roles/' . $role['id']);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/delete');
 
         $this->assertSame(409, $r['status']);
         $this->assertSame('role_in_use', $r['json']['code']);
@@ -431,7 +431,7 @@ final class RoleManagementTest extends TestCase
     {
         $role = $this->roleByKey($key);
 
-        $r = $this->call('DELETE', '/api/roles/' . $role['id']);
+        $r = $this->call('POST', '/api/roles/' . $role['id'] . '/delete');
 
         $this->assertSame(409, $r['status']);
         $this->assertSame('role_protected', $r['json']['code']);

@@ -11,6 +11,7 @@ use Hoelzle\Core\Debug\Debugger;
 use Hoelzle\Core\Http\CorsHandler;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
+use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
 use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
@@ -57,10 +58,17 @@ final class AppBootstrap
         $router->get('/api/permissions', [RolesController::class, 'permissions'], $reader);
         $router->get('/api/roles', [RolesController::class, 'index'], $reader);
 
+        // Rollen an Konten (Ticket #34): Lesesicht der Zuweisungen, Vergeben und Entziehen einzeln.
+        $router->get('/api/accounts/:id/access', [AccountAccessController::class, 'show'], $reader);
+        $assigner = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_ASSIGN)];
+        $router->post('/api/accounts/:id/roles', [AccountAccessController::class, 'assign'], $assigner);
+        $router->post('/api/accounts/:id/roles/:roleId/revoke', [AccountAccessController::class, 'revoke'], $assigner);
+
+        // Rollen anlegen, bearbeiten, loeschen (Ticket #33). Nur GET/POST, weil der CORS-Standard nur diese zulaesst.
         $manager = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_MANAGE)];
         $router->post('/api/roles', [RolesController::class, 'create'], $manager);
-        $router->patch('/api/roles/:id', [RolesController::class, 'update'], $manager);
-        $router->delete('/api/roles/:id', [RolesController::class, 'delete'], $manager);
+        $router->post('/api/roles/:id/update', [RolesController::class, 'update'], $manager);
+        $router->post('/api/roles/:id/delete', [RolesController::class, 'delete'], $manager);
     }
 
     public static function me(Request $request, Response $response): void
