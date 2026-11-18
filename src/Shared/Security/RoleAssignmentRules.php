@@ -23,8 +23,10 @@ final class RoleAssignmentRules
     /**
      * @param string|null $actorId Konto des Akteurs; null = Betreiber (CLI), von P2 ausgenommen wie ein Wildcard-Konto
      * @param array<string,array<string,mixed>> $rolesById Zeilen von {@see RoleOverview::list()} nach Rollen-ID
+     * @param bool $lockAdmins true beim Ausfuehren (in der Transaktion): P3 sperrt den Kreis der Schuladmins ({@see LastAdminGuard});
+     *                         false in der Lesesicht, die nichts sperrt
      */
-    public function __construct(private readonly ?string $actorId, private readonly array $rolesById)
+    public function __construct(private readonly ?string $actorId, private readonly array $rolesById, private readonly bool $lockAdmins = false)
     {
         $this->service = PermissionCatalog::service();
         $this->actor = $actorId === null
@@ -49,8 +51,7 @@ final class RoleAssignmentRules
             }
         }
         if (!$assign) {
-            // Andockpunkt Ticket #35 (P3): Entziehen der Schuladmin-Rolle vom letzten aktiven Schuladmin -> `last_admin`.
-            return null;
+            return $role['key'] === AccessAdministration::ROLE_SCHULADMIN ? (new LastAdminGuard())->refusal([$targetId], $this->lockAdmins) : null;
         }
         return $this->exclusivityRefusal($targetId, $role);
     }

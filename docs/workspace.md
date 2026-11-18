@@ -103,7 +103,7 @@ Kontodetail und Rollenvergabe (ADR 0002 B4, Nachtrag #11). Lesen mit **einem** d
 - 409: `student_role_exclusive` (Schüler/in nur ohne weitere Rolle und Einzelrechte, und umgekehrt), `admin_overrides_forbidden` (Rolle Schuladmin an ein Konto mit Einzelrechten).
 - Vergeben einer vorhandenen und Entziehen einer nicht vorhandenen Rolle ist ein No-op ohne Audit-Eintrag (`200`).
 - Audit: `role.assigned` / `role.revoked`, Objekt = Konto, Akteur = Verwalter, Kontext `{role: <Schlüssel>, name: <Name>}`. `grantInitialAdmin` und `revokeAllRoles` berechnen `mfa_required` ebenfalls neu (`MfaRequirement::recomputeFor`: ODER über `role_settings.requires_mfa` aller Rollen; Rolle ohne Merkmale zählt als „erfordert MFA“).
-- Andockpunkte: P3 (#35) in `RoleAssignmentRules::refusal()` beim Entziehen (Kommentar im Code); Einzelrechte (#36, siehe unten) füllen die Herkünfte `individual`/`withdrawn` der Lesesicht.
+- P3 (#35, siehe unten) steht in `RoleAssignmentRules::refusal()` beim Entziehen; Einzelrechte (#36, siehe unten) füllen die Herkünfte `individual`/`withdrawn` der Lesesicht.
 
 ## Einzelrechte (Ticket #36)
 
@@ -140,6 +140,14 @@ Schreibwege der Rollenverwaltung (ADR 0002 B4, Nachtrag #11). Alle brauchen ein 
 - Löschen sperrt die Rollenzeile (`SELECT … FOR UPDATE`); gleichzeitige Zuweisungen warten über den Fremdschlüssel: Entweder sieht das Löschen die Zuweisung (`role_in_use`) oder die Zuweisung scheitert an der gelöschten Rolle.
 - Audit (Objekt `role` = Rollen-ID): `role.created` und `role.deleted` mit `{role, name}`; `role.updated` mit `{role, name}` plus, soweit zutreffend, `old_name`, `description_changed`, `added` und `removed` (kommagetrennte Rechte-Schlüssel) und `requires_mfa`. Ein Aufruf ohne tatsächliche Änderung schreibt nichts.
 - Web: Seite „Rollen“ mit Anlegen-/Bearbeiten-Formular (gruppierte Checkboxen aus `GET /api/permissions`) und Löschen mit Bestätigung. Nicht erlaubte Aktionen (ohne `roles.manage`, geschützte Rolle, Standardrolle, noch zugewiesene Rolle, nicht besessenes Recht) bleiben sichtbar, aber deaktiviert, mit Begründung; die API entscheidet endgültig.
+
+## Letzter Schuladmin bleibt erhalten (Ticket #35)
+
+P3 (ADR 0002 B4, Nachtrag #11): Wer dem letzten Konto mit Status `active` die Rolle Schuladmin entzieht, erhält `409 last_admin`, auch bei sich selbst. Ein nur eingeladener oder deaktivierter zweiter Admin zählt nicht. Die Lesesicht (`role_actions`) sperrt „Entziehen“ dann mit `code: last_admin` und Begründung; die Web-Kontodetailansicht zeigt den Knopf deaktiviert.
+
+- Baustein: `AccessAdministration::ensureAdminRemains(array $leavingIds)` (wirft `last_admin`). Für spätere Aufrufer wie die Deaktivierung von Konten: in der Transaktion der Aktion als **erstes** aufrufen, mit den Konten, die als aktive Schuladmins ausscheiden würden. Konten ohne aktive Admin-Rolle ändern nichts und werden nie abgelehnt. Die Regel selbst steht in `LastAdminGuard`; `RoleAssignmentRules` nutzt sie für Ausführung (sperrend) und Lesesicht (nicht sperrend).
+- Sperrstrategie: Die Zeile der Rolle Schuladmin in `permission_roles` ist der Mutex über den Kreis der Admins (`SELECT … FOR UPDATE`), danach liest die Prüfung die aktiven Admins ebenfalls mit `FOR UPDATE` (neuester Stand, auch in laufender Transaktion). Reihenfolge immer: Rolle (Mutex), dann Zielkonto; `changeRole` sperrt deshalb die Rolle vor dem Konto, beim Vergeben wie beim Entziehen. Der Verlierer eines Rennens erhält `409 last_admin` oder, wenn der Gewinner ihm die Rolle schon genommen hat, `403 permission_not_held`.
+- Test der Nebenläufigkeit (`tests/Security/LastAdminTest.php`): zwei echte php-cgi-Prozesse gleichzeitig (`HttpTestApp::requestConcurrently`) gegen dieselbe Test-DB; ein Test-Trigger verzögert das Löschen der Rollenzuweisung um 1,5 s und macht das Fenster zwischen Prüfung und Commit groß. Ohne Sperre scheitert der Test reproduzierbar (beide Requests `200`, kein Admin übrig).
 
 ## Weiterführend
 
