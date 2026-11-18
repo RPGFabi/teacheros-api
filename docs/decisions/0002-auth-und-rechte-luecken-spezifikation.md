@@ -213,6 +213,15 @@ Normale Rechte- und Elternrechteänderungen brauchen das **nicht**, weil Rechte 
 
 **Pflichttest:** Nach dem Widerruf liefert das alte Token sofort 401.
 
+**Nachtrag (Klärung zu Ticket #12, 2026-11-18) – Deaktivierung und Reaktivierung:**
+- **Wirkung:** Die Deaktivierung (Glossar) sperrt nur `aktive` Konten. Wer ein nur eingeladenes Konto deaktiviert, erhält 409 `account_not_active`. Rollen und Einzelrechte bleiben erhalten, die Reaktivierung stellt sie unverändert wieder her. Das Widerrufen fachlicher Zuordnungen (CORE-08) gehört zu B6, eine geplante Deaktivierung zum Stichtag zum Schuljahreswechsel. Beides ist nicht Teil von #12.
+- **Recht und Regeln:** Neues Recht `accounts.deactivate` für Deaktivieren und Reaktivieren. Analog zu P2 deaktiviert oder reaktiviert man nur Konten, deren effektive Rechte man alle selbst besitzt (403 `permission_not_held`), sodass nur Schuladmins Schuladmins deaktivieren. Ein Wildcard-Konto ist ausgenommen. Sich selbst deaktivieren ergibt 409 `self_deactivation`. P3 gilt über `ensureAdminRemains` (409 `last_admin`).
+- **Grund:** fest `admin_locked` („Von der Verwaltung gesperrt“), ohne Freitext. Er wird lokal gespeichert, an G4a gespiegelt und im Audit-Eintrag `account.deactivated` festgehalten. Bei der Reaktivierung wird er entfernt.
+- **Deaktivieren:** Zuerst lokal (Status, Grund, `inactive_since`, `sessions_valid_after`), danach `disable-login`. Scheitert der Aufruf, bleibt die lokale Sperre bestehen, und das Konto trägt die Markierung „Abgleich offen“. Ein Verwalter mit `accounts.deactivate` holt ihn über „Abgleich wiederholen“ nach. Die automatische Outbox ist zurückgestellt (#39).
+- **Reaktivieren:** umgekehrte Reihenfolge. Zuerst `enable-login` synchron, erst bei Erfolg lokal `aktiv`, eine offene Markierung entfällt. Fachliche Ablehnungen des Dienstes (`self_deleted`, `email_unconfirmed`) gibt die API als 409 weiter, Nichterreichbarkeit als 502 `auth_unavailable`. Ein halber Zustand entsteht in keinem Fall. `sessions_valid_after` bleibt stehen, alte Tokens bleiben ungültig.
+- **Sichtbarer Grund:** 401 `account_inactive` enthält `reason`. Der Anmeldedienst nennt beim Login eines gesperrten Kontos nach korrektem Passwort `code: "account_disabled"` und `reason`, zusätzlich zur unveränderten Meldung (Erweiterung von G4, abwärtskompatibel für EAW). Das Web zeigt bei `admin_locked` „Ihr Konto wurde von der Verwaltung gesperrt. Bitte wenden Sie sich an Ihre Schule.“, sonst „Ihr Konto ist gesperrt.“
+- **Audit:** `account.deactivated` (`{reason}`) und `account.reactivated`. Das Nachholen des Abgleichs erzeugt keinen Audit-Eintrag.
+
 ### B3 – MFA-Pflicht erzwingen
 
 Für Konten mit `mfa_required = true` (Rollen mit dem Merkmal `requires_mfa`, also alle Mitarbeitenden- und Admin-Rollen) wird ein Token mit `usedMFA = false` bei fachlichen Routen mit `403 {"code": "mfa_enrollment_required"}` abgelehnt.

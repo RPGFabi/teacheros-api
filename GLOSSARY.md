@@ -40,6 +40,10 @@ _Avoid_: Username, Login, Benutzername
 Der einzige Weg, auf dem an einer Schulinstanz ein Konto entsteht. Das Konto ist bis zur Annahme `eingeladen`; die Person nimmt an, indem sie ihr Passwort setzt, und das Konto wird bei der ersten Anmeldung `aktiv`. Eine erneute Einladung macht die vorige ungültig.
 _Avoid_: Registrierung, Provisionierung
 
+**Deaktivierung**:
+Die Sperre eines aktiven Kontos durch die Verwaltung: Das Konto kann sich nicht mehr anmelden, laufende Sitzungen enden sofort. Konto, Person, Rollen und Daten bleiben erhalten; das Konto ist `deaktiviert`. Die **Reaktivierung** hebt die Sperre auf und stellt den vorigen Zugang wieder her, ohne alte Sitzungen zurückzubringen.
+_Avoid_: Sperrung, Löschung, inaktiv
+
 **Einladungscode**:
 Ein kurzer, einmal angezeigter Code, mit dem eine Person ohne E-Mail-Adresse ihre Einladung annimmt; er wird auf einer ausgedruckten Einladungskarte (Text und QR-Code) weitergegeben. Eine erneute Einladung macht ihn ungültig.
 _Avoid_: PIN, Zugangscode, Passwort
