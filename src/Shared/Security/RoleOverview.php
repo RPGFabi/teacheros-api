@@ -45,6 +45,12 @@ final class RoleOverview
         return $roles;
     }
 
+    /** @return array<string,array<string,mixed>> die Zeilen von {@see self::list()} nach Rollen-ID */
+    public function byId(): array
+    {
+        return array_column($this->list(), null, 'id');
+    }
+
     /** @return array<string,mixed>|null eine Zeile von {@see self::list()} */
     public function find(string $roleId): ?array
     {

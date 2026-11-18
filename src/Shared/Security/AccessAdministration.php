@@ -37,17 +37,32 @@ final class AccessAdministration
         $this->audit->record($actor, AuditLog::ROLE_ASSIGNED, 'account', $publicUserId, ['role' => self::ROLE_SCHULADMIN, 'name' => 'Schuladmin']);
     }
 
-    /** Entzieht einem Konto alle Rollen (z. B. wenn eine nie angenommene Einladung ersetzt wird). */
+    /**
+     * Entzieht einem Konto alle Rollen und setzt alle Einzelrechte zurueck (z. B. wenn eine nie angenommene Einladung
+     * ersetzt wird). Prueft P3 ({@see self::ensureAdminRemains()}, als Erstes: Rolle vor Konto) und schreibt je Rolle
+     * `role.revoked` (Rollenschluessel, -name) und je Einzelrecht `permission.override_cleared` (Recht, Modus).
+     *
+     * @throws CodedException `last_admin` (409)
+     */
     public function revokeAllRoles(string $publicUserId, Actor $actor): void
     {
-        $service = PermissionCatalog::service();
-        $access = $service->getUserAccess($publicUserId);
-        if ($access['role_ids'] === [] && $access['overrides'] === []) {
-            return;
-        }
-        $service->setUserAccess($publicUserId, [], []);
-        MfaRequirement::recomputeFor([$publicUserId]);
-        $this->audit->record($actor, AuditLog::ROLE_REVOKED, 'account', $publicUserId);
+        $this->atomically(function () use ($publicUserId, $actor): void {
+            $this->ensureAdminRemains([$publicUserId]);
+            $service = PermissionCatalog::service();
+            $access = $service->getUserAccess($publicUserId);
+            if ($access['role_ids'] === [] && $access['overrides'] === []) {
+                return;
+            }
+            $roles = (new RoleOverview())->byId();
+            $service->setUserAccess($publicUserId, [], []);
+            MfaRequirement::recomputeFor([$publicUserId]);
+            foreach ($access['role_ids'] as $roleId) {
+                $this->audit->record($actor, AuditLog::ROLE_REVOKED, 'account', $publicUserId, ['role' => $roles[$roleId]['key'], 'name' => $roles[$roleId]['name']]);
+            }
+            foreach ($access['overrides'] as $permission => $mode) {
+                $this->audit->record($actor, AuditLog::PERMISSION_OVERRIDE_CLEARED, 'account', $publicUserId, ['permission' => $permission, 'mode' => $mode]);
+            }
+        });
     }
 
     /**

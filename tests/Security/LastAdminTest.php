@@ -214,6 +214,30 @@ final class LastAdminTest extends TestCase
         $this->assertExactlyOneRevocationSucceeded($responses);
     }
 
+    // ---- revokeAllRoles prueft P3 ----------------------------------------------------------
+
+    public function testRevokeAllRolesLehntBeimLetztenAktivenSchuladminAbUndAendertNichts(): void
+    {
+        $this->admin(self::A);
+
+        $r = $this->app->cli('tests/Support/revoke-all-roles.php', [self::A]);
+
+        $this->assertSame([3, 'last_admin'], [$r['code'], trim($r['out'])]);
+        $this->assertSame([self::A], $this->activeAdmins());
+        $this->assertSame([], $this->app->auditLog());
+    }
+
+    public function testRevokeAllRolesEntziehtEinemAdminNebenEinemWeiterenAktivenAdmin(): void
+    {
+        $this->admin(self::A);
+        $this->admin(self::B);
+
+        $r = $this->app->cli('tests/Support/revoke-all-roles.php', [self::A]);
+
+        $this->assertSame([0, 'ok'], [$r['code'], trim($r['out'])]);
+        $this->assertSame([self::B], $this->activeAdmins());
+    }
+
     /**
      * Genau ein Request gelingt, genau ein aktiver Admin bleibt. Der andere scheitert mit `last_admin` (409) oder, wenn der
      * erste ihm vorher die Rolle genommen hat, mit `permission_not_held` (403): auch das ist richtig, ein Konto

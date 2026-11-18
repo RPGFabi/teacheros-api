@@ -190,6 +190,33 @@ final class FirstSchuladminCliTest extends TestCase
         $this->assertStringNotContainsString('admin@schule.test', json_encode($withdrawn), 'keine E-Mail im Audit-Eintrag');
     }
 
+    public function testDasErsetzenEinerEinladungAuditiertJedeEntzogeneRolleUndJedesZurueckgesetzteEinzelrecht(): void
+    {
+        $this->assertSame(0, $this->invite()['code']);
+        $old = $this->app->accounts()[0]['public_user_id'];
+        $this->app->assignRole($old, 'lehrkraft');
+        $this->app->grantPermission($old, 'accounts.invite');
+        $this->app->pdo()->prepare("INSERT INTO `permission_user_overrides` (`user_uuid`, `permission`, `mode`) VALUES (?, 'roles.assign', 'removed')")->execute([$old]);
+        $this->app->pdo()->exec('DELETE FROM `audit_log`');
+
+        $this->assertSame(0, $this->invite(['--email=neu@schule.test'])['code']);
+
+        $entries = array_values(array_filter(
+            $this->app->auditLog(),
+            static fn (array $e) => $e['object_id'] === $old && in_array($e['action'], ['role.revoked', 'permission.override_cleared'], true),
+        ));
+        $contexts = array_map(static fn (array $e) => [$e['action'], $e['actor_type'], json_decode($e['context'], true)], $entries);
+        $this->assertEqualsCanonicalizing(
+            [
+                ['role.revoked', 'cli', ['role' => 'schuladmin', 'name' => 'Schuladmin']],
+                ['role.revoked', 'cli', ['role' => 'lehrkraft', 'name' => 'Lehrkraft']],
+                ['permission.override_cleared', 'cli', ['permission' => 'accounts.invite', 'mode' => 'added']],
+                ['permission.override_cleared', 'cli', ['permission' => 'roles.assign', 'mode' => 'removed']],
+            ],
+            $contexts,
+        );
+    }
+
     /** @return array<string, array{array}> Skripte, mit denen der Anmeldedienst fehlschlaegt. */
     public static function authFailures(): array
     {
