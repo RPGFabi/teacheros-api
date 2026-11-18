@@ -59,6 +59,7 @@ final class AccountAccessView
             'permissions' => $this->permissions($accountId, $roles, $access),
             'role_actions' => $actions,
             'permission_actions' => $this->permissionActions($accountId, $viewerId, $roles, $access),
+            'account_actions' => $this->accountActions($account, $viewerId),
         ];
     }
 
@@ -72,9 +73,27 @@ final class AccountAccessView
     {
         $data = ['id' => $account->publicUserId];
         if ($viewerId === null || PermissionCatalog::service()->canAny($viewerId, [PermissionCatalog::ACCOUNTS_VIEW])) {
-            $data += ['email' => $account->email, 'login_name' => $account->loginName, 'status' => $account->status->value];
+            $data += [
+                'email' => $account->email,
+                'login_name' => $account->loginName,
+                'status' => $account->status->value,
+                'inactive_since' => $account->inactiveSince === null ? null : gmdate('c', $account->inactiveSince),
+                'inactive_reason' => $account->inactiveReason,
+            ];
         }
         return $data + ['mfa_required' => $account->mfaRequired];
+    }
+
+    /**
+     * Die Aktionen am Konto selbst fuer den Betrachter (Ticket #41): bisher `deactivate`, mit `allowed`, bei Sperre
+     * `code` und `reason` aus {@see AccountDeactivationRules}; Ticket #43 ergaenzt `reactivate`.
+     *
+     * @return list<array{action:string,allowed:bool,code:?string,reason:?string}>
+     */
+    private function accountActions(Account $account, ?string $viewerId): array
+    {
+        $refusal = (new AccountDeactivationRules($viewerId))->refusal($account);
+        return [['action' => 'deactivate', 'allowed' => $refusal === null, 'code' => $refusal?->errorCode, 'reason' => $refusal?->getMessage()]];
     }
 
     /**

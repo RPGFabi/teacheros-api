@@ -6,17 +6,30 @@ namespace TeacherOS\Shared\Security;
 
 final class Account
 {
+    /**
+     * @param int|null $sessionsValidAfter Unix-Zeit: Tokens mit frueherem `iat` sind widerrufen (ADR 0002 B2); null = keine Grenze
+     * @param int|null $inactiveSince Unix-Zeit der Deaktivierung
+     */
     public function __construct(
         public readonly string $publicUserId,
         public readonly AccountStatus $status,
         public readonly bool $mfaRequired,
         public readonly ?string $email = null,
         public readonly string $loginName = '',
+        public readonly ?int $sessionsValidAfter = null,
+        public readonly ?int $inactiveSince = null,
+        public readonly ?string $inactiveReason = null,
     ) {
     }
 
     public function isActive(): bool
     {
         return $this->status === AccountStatus::Active;
+    }
+
+    /** Ist ein Token, das um $issuedAt ausgestellt wurde, durch die Sitzungsgrenze widerrufen? Ohne `iat` fail-closed. */
+    public function revokes(?int $issuedAt): bool
+    {
+        return $this->sessionsValidAfter !== null && ($issuedAt === null || $issuedAt < $this->sessionsValidAfter);
     }
 }

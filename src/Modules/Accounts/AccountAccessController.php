@@ -61,6 +61,16 @@ final class AccountAccessController
         self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->clearPermissionOverride($actor, $accountId, $permission));
     }
 
+    /**
+     * Konto deaktivieren (Ticket #41). Antwort: die aktuelle Lesesicht.
+     * Andockpunkt Ticket #42: nach diesem Aufruf (lokaler Commit ist erfolgt) `disable-login` beim Anmeldedienst
+     * aufrufen; scheitert er, bleibt die lokale Sperre bestehen und das Konto bekommt die Markierung "Abgleich offen".
+     */
+    public static function deactivate(Request $request, Response $response): void
+    {
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->deactivateAccount($actor, $accountId));
+    }
+
     /** Fuehrt eine Aenderung am Konto der Route aus und antwortet mit der aktuellen Lesesicht. @param callable(Actor, string): void $change */
     private static function change(Request $request, Response $response, callable $change): void
     {

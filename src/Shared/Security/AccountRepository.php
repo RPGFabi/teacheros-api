@@ -9,7 +9,8 @@ use Hoelzle\Core\Database\DB;
 /** Liest Konten bei jedem Aufruf frisch aus der Datenbank (kein Cache, ADR 0002 B1). */
 final class AccountRepository
 {
-    private const COLUMNS = '`public_user_id`, `status`, `mfa_required`, `email`, `login_name`';
+    private const COLUMNS = '`public_user_id`, `status`, `mfa_required`, `email`, `login_name`, `inactive_reason`,
+        UNIX_TIMESTAMP(`sessions_valid_after`) AS sessions_valid_after_ts, UNIX_TIMESTAMP(`inactive_since`) AS inactive_since_ts';
 
     public function findByPublicUserId(string $publicUserId): ?Account
     {
@@ -29,12 +30,14 @@ final class AccountRepository
     /**
      * Alle Konten fuer die Kontenliste, aelteste zuerst. `invited_at` als ISO-8601 (UTC) oder null.
      *
-     * @return list<array{id:string,email:?string,login_name:string,status:string,invited_at:?string}>
+     * Deaktivierte Konten tragen zusaetzlich `inactive_since` (ISO-8601, UTC), sonst null.
+     *
+     * @return list<array{id:string,email:?string,login_name:string,status:string,invited_at:?string,inactive_since:?string}>
      */
     public function listAll(): array
     {
         $rows = DB::getInstance()->query(
-            'SELECT `public_user_id`, `email`, `login_name`, `status`, UNIX_TIMESTAMP(`invited_at`) AS invited_ts FROM `accounts` ORDER BY `id`'
+            'SELECT `public_user_id`, `email`, `login_name`, `status`, UNIX_TIMESTAMP(`invited_at`) AS invited_ts, UNIX_TIMESTAMP(`inactive_since`) AS inactive_ts FROM `accounts` ORDER BY `id`'
         )->fetchAll();
         return array_map(static fn (array $r) => [
             'id' => $r['public_user_id'],
@@ -42,6 +45,7 @@ final class AccountRepository
             'login_name' => $r['login_name'],
             'status' => $r['status'],
             'invited_at' => $r['invited_ts'] === null ? null : gmdate('c', (int) $r['invited_ts']),
+            'inactive_since' => $r['status'] === AccountStatus::Inactive->value && $r['inactive_ts'] !== null ? gmdate('c', (int) $r['inactive_ts']) : null,
         ], $rows);
     }
 
@@ -85,6 +89,22 @@ final class AccountRepository
         return $stmt->rowCount() === 1;
     }
 
+    /**
+     * Deaktiviert ein aktives Konto: Status, Grund, `inactive_since` und `sessions_valid_after` (ADR 0002 B2) in einem
+     * Schritt. Der Aufrufer prueft Regeln und sperrt in seiner Transaktion.
+     *
+     * @return bool true nur, wenn dieser Aufruf den Wechsel vollzogen hat
+     */
+    public function deactivate(string $publicUserId, InactiveReason $reason): bool
+    {
+        $stmt = DB::getInstance()->prepare(
+            'UPDATE `accounts` SET `status` = :inactive, `inactive_reason` = :reason, `inactive_since` = CURRENT_TIMESTAMP, `sessions_valid_after` = CURRENT_TIMESTAMP
+             WHERE `public_user_id` = :id AND `status` = :active'
+        );
+        $stmt->execute(['id' => $publicUserId, 'inactive' => AccountStatus::Inactive->value, 'reason' => $reason->value, 'active' => AccountStatus::Active->value]);
+        return $stmt->rowCount() === 1;
+    }
+
     public function delete(string $publicUserId): void
     {
         DB::getInstance()->prepare('DELETE FROM `accounts` WHERE `public_user_id` = :id')->execute(['id' => $publicUserId]);
@@ -122,6 +142,15 @@ final class AccountRepository
         $row = $stmt->fetch();
         return $row === false
             ? null
-            : new Account($row['public_user_id'], AccountStatus::from($row['status']), (bool) $row['mfa_required'], $row['email'], $row['login_name']);
+            : new Account(
+                $row['public_user_id'],
+                AccountStatus::from($row['status']),
+                (bool) $row['mfa_required'],
+                $row['email'],
+                $row['login_name'],
+                $row['sessions_valid_after_ts'] === null ? null : (int) $row['sessions_valid_after_ts'],
+                $row['inactive_since_ts'] === null ? null : (int) $row['inactive_since_ts'],
+                $row['inactive_reason'],
+            );
     }
 }

@@ -202,6 +202,33 @@ final class AccessAdministration
         });
     }
 
+    /**
+     * Deaktiviert ein aktives Konto auf Veranlassung der Verwaltung (Ticket #41, ADR 0002 B2 und Nachtrag #12): setzt
+     * Status, Grund `admin_locked`, `inactive_since` und `sessions_valid_after`, schreibt `account.deactivated`
+     * (`reason`). Rollen und Einzelrechte bleiben. Regeln: {@see AccountDeactivationRules}.
+     *
+     * Alles in einer Transaktion. Sperrreihenfolge wie bei P3 vorgegeben: zuerst der Mutex der Schuladmins
+     * ({@see LastAdminGuard::lockMutex()}), dann das Zielkonto, dann die Admin-Zeilen (in der Regelpruefung).
+     * Der Aufruf kehrt erst nach dem lokalen Commit zurueck: Das Spiegeln an den Anmeldedienst (`disable-login`, Ticket #42)
+     * haengt der Aufrufer danach an; scheitert es, bleibt die lokale Sperre bestehen (B2: erst lokal, dann Dienst).
+     *
+     * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403);
+     *                        `self_deactivation`, `account_not_active`, `last_admin` (409)
+     */
+    public function deactivateAccount(Actor $actor, string $targetId): void
+    {
+        $this->atomically(function () use ($actor, $targetId): void {
+            LastAdminGuard::lockMutex();
+            $this->lockAccount($targetId);
+            $target = (new AccountRepository())->findByPublicUserId($targetId) ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+
+            $this->throwIfRefused((new AccountDeactivationRules($actor->accountId, lockAdmins: true))->refusal($target));
+
+            (new AccountRepository())->deactivate($targetId, InactiveReason::AdminLocked);
+            $this->audit->record($actor, AuditLog::ACCOUNT_DEACTIVATED, 'account', $targetId, ['reason' => InactiveReason::AdminLocked->value]);
+        });
+    }
+
     /** Sperrt die Zeile des Zielkontos (gleichzeitige Aenderungen desselben Kontos laufen nacheinander). */
     private function lockAccount(string $targetId): void
     {
