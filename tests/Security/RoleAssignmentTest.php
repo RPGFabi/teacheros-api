@@ -160,10 +160,10 @@ final class RoleAssignmentTest extends TestCase
     }
 
     #[DataProvider('verwaltungsrechte')]
-    public function testDetailIstMitJedemDerDreiVerwaltungsrechteLesbar(string $permission): void
+    public function testDetailIstMitAccountsViewUndJedemDerDreiVerwaltungsrechteLesbar(string $permission): void
     {
         $this->target();
-        $this->verwalter($permission);
+        $this->verwalter($permission, 'accounts.view');
 
         $this->assertSame(200, $this->access(self::TARGET, self::VERWALTER)['status']);
     }
@@ -174,6 +174,48 @@ final class RoleAssignmentTest extends TestCase
         yield 'roles.manage' => ['roles.manage'];
         yield 'roles.assign' => ['roles.assign'];
         yield 'permissions.assign' => ['permissions.assign'];
+    }
+
+    #[DataProvider('verwaltungsrechte')]
+    public function testDetailOhneAccountsViewKommt403AuchMitVerwaltungsrecht(string $permission): void
+    {
+        $this->target();
+        $this->verwalter($permission);
+
+        $r = $this->access(self::TARGET, self::VERWALTER);
+
+        $this->assertSame(403, $r['status']);
+        $this->assertSame('forbidden', $r['json']['code']);
+        $this->assertStringNotContainsString('@', $r['body']);
+    }
+
+    public function testSchreibwegOhneAccountsViewLiefertKeineKontodatenAusserIdUndMfa(): void
+    {
+        $this->target();
+        $this->app->pdo()->prepare('UPDATE `accounts` SET `email` = ?, `login_name` = ? WHERE `public_user_id` = ?')->execute(['ziel@schule.test', 'ziel', self::TARGET]);
+        $this->verwalter('roles.assign');
+        $roleId = $this->customRole('leer', []);
+
+        $r = $this->assign($roleId, self::VERWALTER);
+
+        $this->assertSame(200, $r['status']);
+        $this->assertSame(['id', 'mfa_required'], array_keys($r['json']['account']));
+        $this->assertSame(self::TARGET, $r['json']['account']['id']);
+        $this->assertStringNotContainsString('ziel@schule.test', $r['body']);
+        $this->assertSame(['r_t34_leer'], $this->roleKeysOf(self::TARGET));
+    }
+
+    public function testSchreibwegMitAccountsViewLiefertAuchKontodaten(): void
+    {
+        $this->target();
+        $this->app->pdo()->prepare('UPDATE `accounts` SET `email` = ?, `login_name` = ? WHERE `public_user_id` = ?')->execute(['ziel@schule.test', 'ziel', self::TARGET]);
+        $this->verwalter('roles.assign', 'accounts.view');
+
+        $r = $this->assign($this->customRole('leer', []), self::VERWALTER);
+
+        $this->assertSame(200, $r['status']);
+        $this->assertSame('ziel@schule.test', $r['json']['account']['email']);
+        $this->assertSame('active', $r['json']['account']['status']);
     }
 
     public function testDetailOhneVerwaltungsrechtKommt403UndUnbekanntesKontoKommt404(): void
@@ -512,7 +554,7 @@ final class RoleAssignmentTest extends TestCase
 
     public function testDetailMeldetSelbstZuweisungAlsGesperrteAktion(): void
     {
-        $this->verwalter('roles.assign');
+        $this->verwalter('roles.assign', 'accounts.view');
         $a = $this->customRole('a', []);
 
         $r = $this->access(self::VERWALTER, self::VERWALTER);

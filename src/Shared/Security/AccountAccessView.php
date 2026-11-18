@@ -54,18 +54,27 @@ final class AccountAccessView
         }
 
         return [
-            'account' => [
-                'id' => $account->publicUserId,
-                'email' => $account->email,
-                'login_name' => $account->loginName,
-                'status' => $account->status->value,
-                'mfa_required' => $account->mfaRequired,
-            ],
+            'account' => $this->accountData($account, $viewerId),
             'roles' => $assigned,
             'permissions' => $this->permissions($accountId, $roles, $access),
             'role_actions' => $actions,
             'permission_actions' => $this->permissionActions($accountId, $viewerId, $roles, $access),
         ];
+    }
+
+    /**
+     * E-Mail, Anmeldename und Status nur fuer Betrachter mit `accounts.view` (oder den Betreiber): die Schreibwege
+     * (`roles.assign`, `permissions.assign`) geben dieselbe Lesesicht zurueck, verlangen aber nicht `accounts.view`.
+     *
+     * @return array<string,mixed>
+     */
+    private function accountData(Account $account, ?string $viewerId): array
+    {
+        $data = ['id' => $account->publicUserId];
+        if ($viewerId === null || PermissionCatalog::service()->canAny($viewerId, [PermissionCatalog::ACCOUNTS_VIEW])) {
+            $data += ['email' => $account->email, 'login_name' => $account->loginName, 'status' => $account->status->value];
+        }
+        return $data + ['mfa_required' => $account->mfaRequired];
     }
 
     /**

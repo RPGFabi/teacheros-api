@@ -426,7 +426,7 @@ final class PermissionOverrideTest extends TestCase
     public function testDetailSperrtEinzelrechteBeiSchuelerAdminUndSelbstMitBegruendung(): void
     {
         $this->asAdmin();
-        $this->verwalter('permissions.assign');
+        $this->verwalter('permissions.assign', 'accounts.view');
         $this->target();
         $this->app->assignRole(self::TARGET, 'schueler');
 
@@ -435,7 +435,7 @@ final class PermissionOverrideTest extends TestCase
         $this->assertSame('student_role_exclusive', $schueler['accounts.view']['code']);
 
         $admin = $this->actionsByPermission($this->call('GET', '/api/accounts/' . self::ADMIN . '/access', self::VERWALTER));
-        $this->assertSame('permission_not_held', $admin['accounts.view']['code'], 'P2 vor Schuladmin-Regel');
+        $this->assertSame('permission_not_held', $admin['roles.manage']['code'], 'P2 vor Schuladmin-Regel');
         $adminVonAdmin = $this->actionsByPermission($this->call('GET', '/api/accounts/' . self::ADMIN . '/access', self::ADMIN));
         $this->assertSame('withdraw', $adminVonAdmin['accounts.view']['action']);
         $this->assertSame('admin_overrides_forbidden', $adminVonAdmin['accounts.view']['code']);

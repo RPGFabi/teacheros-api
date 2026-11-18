@@ -59,7 +59,8 @@ final class AppBootstrap
         $router->get('/api/roles', [RolesController::class, 'index'], $reader);
 
         // Rollen an Konten (Ticket #34): Lesesicht der Zuweisungen, Vergeben und Entziehen einzeln.
-        $router->get('/api/accounts/:id/access', [AccountAccessController::class, 'show'], $reader);
+        // Kontodetail: zusaetzlich accounts.view (ADR 0002 B4: Konten sehen, wer das Recht dazu hat).
+        $router->get('/api/accounts/:id/access', [AccountAccessController::class, 'show'], [...$reader, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
         $assigner = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_ASSIGN)];
         $router->post('/api/accounts/:id/roles', [AccountAccessController::class, 'assign'], $assigner);
         $router->post('/api/accounts/:id/roles/:roleId/revoke', [AccountAccessController::class, 'revoke'], $assigner);
