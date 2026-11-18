@@ -80,11 +80,7 @@ final class AccessAdministration
             $roleLock = DB::getInstance()->prepare('SELECT `id` FROM `permission_roles` WHERE `id` = :id FOR UPDATE');
             $roleLock->execute(['id' => $roleId]);
             // Sperre auf dem Zielkonto: gleichzeitige Aenderungen desselben Kontos laufen nacheinander.
-            $lock = DB::getInstance()->prepare('SELECT `id` FROM `accounts` WHERE `public_user_id` = :id FOR UPDATE');
-            $lock->execute(['id' => $targetId]);
-            if ($lock->fetchColumn() === false) {
-                throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
-            }
+            $this->lockAccount($targetId);
             $roles = array_column((new RoleOverview())->list(), null, 'id');
             $role = $roles[$roleId] ?? throw new CodedException('role_not_found', 404, 'Die Rolle gibt es nicht.');
 
@@ -135,6 +131,78 @@ final class AccessAdministration
                 throw $refusal;
             }
         });
+    }
+
+    /**
+     * Gewaehrt einem Konto ein Recht zusaetzlich zu seinen Rollen (Einzelrecht, Ticket #36). Ersetzt ein
+     * entzogenes Einzelrecht. Hat es das Einzelrecht schon, geschieht nichts (kein Audit-Eintrag).
+     * Schreibt `permission.granted` mit Recht und Modus `added`.
+     */
+    public function grantPermission(Actor $actor, string $targetId, string $permission): void
+    {
+        $this->changeOverride($actor, $targetId, $permission, PermissionOverrideRules::GRANT);
+    }
+
+    /** Entzieht einem Konto ein Recht trotz seiner Rollen; schreibt `permission.withdrawn` mit Modus `removed`. */
+    public function withdrawPermission(Actor $actor, string $targetId, string $permission): void
+    {
+        $this->changeOverride($actor, $targetId, $permission, PermissionOverrideRules::WITHDRAW);
+    }
+
+    /**
+     * Setzt ein Einzelrecht zurueck: es gilt wieder, was die Rollen ergeben. Schreibt `permission.override_cleared`
+     * mit dem zurueckgesetzten Modus (`added` oder `removed`).
+     */
+    public function clearPermissionOverride(Actor $actor, string $targetId, string $permission): void
+    {
+        $this->changeOverride($actor, $targetId, $permission, PermissionOverrideRules::CLEAR);
+    }
+
+    private function changeOverride(Actor $actor, string $targetId, string $permission, string $action): void
+    {
+        $this->atomically(function () use ($actor, $targetId, $permission, $action): void {
+            $this->lockAccount($targetId);
+            $refusal = (new PermissionOverrideRules($actor->accountId, array_column((new RoleOverview())->list(), null, 'id')))->refusal($targetId, $permission, $action);
+            if ($refusal !== null) {
+                throw $refusal;
+            }
+            $service = PermissionCatalog::service();
+            $access = $service->getUserAccess($targetId);
+            $current = $access['overrides'][$permission] ?? null;
+            $overrides = $access['overrides'];
+            if ($action === PermissionOverrideRules::CLEAR) {
+                $mode = $current;
+                unset($overrides[$permission]);
+            } else {
+                $mode = $action === PermissionOverrideRules::GRANT ? 'added' : 'removed';
+                $overrides[$permission] = $mode;
+            }
+            if ($mode === null || ($action !== PermissionOverrideRules::CLEAR && $current === $mode)) {
+                return;
+            }
+            $service->setUserAccess($targetId, $access['role_ids'], $overrides);
+            $this->audit->record(
+                $actor,
+                match ($action) {
+                    PermissionOverrideRules::GRANT => AuditLog::PERMISSION_GRANTED,
+                    PermissionOverrideRules::WITHDRAW => AuditLog::PERMISSION_WITHDRAWN,
+                    PermissionOverrideRules::CLEAR => AuditLog::PERMISSION_OVERRIDE_CLEARED,
+                },
+                'account',
+                $targetId,
+                ['permission' => $permission, 'mode' => $mode],
+            );
+        });
+    }
+
+    /** Sperrt die Zeile des Zielkontos (gleichzeitige Aenderungen desselben Kontos laufen nacheinander). */
+    private function lockAccount(string $targetId): void
+    {
+        $lock = DB::getInstance()->prepare('SELECT `id` FROM `accounts` WHERE `public_user_id` = :id FOR UPDATE');
+        $lock->execute(['id' => $targetId]);
+        if ($lock->fetchColumn() === false) {
+            throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+        }
     }
 
     /** Fuehrt $work in einer Transaktion aus (oder in der des Aufrufers). */

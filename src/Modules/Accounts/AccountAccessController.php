@@ -42,6 +42,39 @@ final class AccountAccessController
         $response->json(self::view($accountId));
     }
 
+    /** Einzelrecht gewaehren (Ticket #36); `permissions.assign` prueft die Route. */
+    public static function grantPermission(Request $request, Response $response): void
+    {
+        $accountId = (string) $request->getParam('id');
+        (new AccessAdministration())->grantPermission(self::actor(), $accountId, self::permissionFrom($request));
+        $response->json(self::view($accountId));
+    }
+
+    /** Einzelrecht entziehen (trotz Rolle, Ticket #36); `permissions.assign` prueft die Route. */
+    public static function withdrawPermission(Request $request, Response $response): void
+    {
+        $accountId = (string) $request->getParam('id');
+        (new AccessAdministration())->withdrawPermission(self::actor(), $accountId, self::permissionFrom($request));
+        $response->json(self::view($accountId));
+    }
+
+    /** Einzelrecht zuruecksetzen (Ticket #36): es gilt wieder, was die Rollen ergeben. */
+    public static function clearPermission(Request $request, Response $response): void
+    {
+        $accountId = (string) $request->getParam('id');
+        (new AccessAdministration())->clearPermissionOverride(self::actor(), $accountId, self::permissionFrom($request));
+        $response->json(self::view($accountId));
+    }
+
+    private static function permissionFrom(Request $request): string
+    {
+        $permission = $request->getBody('permission');
+        if (!is_string($permission) || trim($permission) === '') {
+            throw new CodedException('permission_required', 400, 'Bitte ein Recht angeben.');
+        }
+        return trim($permission);
+    }
+
     /** @return array<string,mixed> */
     private static function view(string $accountId): array
     {

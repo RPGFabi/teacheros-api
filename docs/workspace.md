@@ -103,7 +103,26 @@ Kontodetail und Rollenvergabe (ADR 0002 B4, Nachtrag #11). Lesen mit **einem** d
 - 409: `student_role_exclusive` (Schüler/in nur ohne weitere Rolle und Einzelrechte, und umgekehrt), `admin_overrides_forbidden` (Rolle Schuladmin an ein Konto mit Einzelrechten).
 - Vergeben einer vorhandenen und Entziehen einer nicht vorhandenen Rolle ist ein No-op ohne Audit-Eintrag (`200`).
 - Audit: `role.assigned` / `role.revoked`, Objekt = Konto, Akteur = Verwalter, Kontext `{role: <Schlüssel>, name: <Name>}`. `grantInitialAdmin` und `revokeAllRoles` berechnen `mfa_required` ebenfalls neu (`MfaRequirement::recomputeFor`: ODER über `role_settings.requires_mfa` aller Rollen; Rolle ohne Merkmale zählt als „erfordert MFA“).
-- Andockpunkte: P3 (#35) in `RoleAssignmentRules::refusal()` beim Entziehen (Kommentar im Code); Einzelrechte (#36) ergänzen `AccessAdministration` und füllen die schon vorhandenen Herkünfte `individual`/`withdrawn` der Lesesicht.
+- Andockpunkte: P3 (#35) in `RoleAssignmentRules::refusal()` beim Entziehen (Kommentar im Code); Einzelrechte (#36, siehe unten) füllen die Herkünfte `individual`/`withdrawn` der Lesesicht.
+
+## Einzelrechte (Ticket #36)
+
+Ein Verwalter mit `permissions.assign` gewährt, entzieht oder setzt Einzelrechte eines Kontos zurück (Glossar: Einzelrecht; ADR 0002 B4, Nachtrag #11). Alle Änderungen laufen über `AccessAdministration::grantPermission/withdrawPermission/clearPermissionOverride` (eine Transaktion mit Sperre auf dem Zielkonto: Prüfung, Änderung, Audit). Die Regeln stehen in `PermissionOverrideRules` und gelten für Ausführung und Lesesicht gleichermaßen. Je Recht einzeln, kein Gesamt-Ersetzen; nur `POST` (CORS).
+
+| Endpunkt (Body `{permission}`) | Wirkung |
+|---|---|
+| `POST /api/accounts/{id}/permissions/grant` | Einzelrecht `added`: das Recht gilt zusätzlich zu den Rollen (ersetzt ein entzogenes) |
+| `POST /api/accounts/{id}/permissions/withdraw` | Einzelrecht `removed`: das Recht gilt trotz Rolle nicht |
+| `POST /api/accounts/{id}/permissions/clear` | Einzelrecht entfernt: es gilt wieder, was die Rollen ergeben |
+
+Alle drei antworten `200` mit der neuen Lesesicht von `GET /api/accounts/{id}/access`; Wiederholen ist ein No-op ohne Audit-Eintrag.
+
+- Nur mit `permissions.assign`, sonst `403 forbidden` (Route). `400 permission_required` (kein Recht angegeben), `400 unknown_permission` (nicht im Katalog, auch `*`), `404 account_not_found`.
+- P2 (403, Wildcard-Konten und CLI ausgenommen): am eigenen Konto `self_escalation`; sonst nur Rechte, die der Verwalter selbst **effektiv** besitzt (`permission_not_held`), für alle drei Handlungen. Das Zurücksetzen eines entzogenen Einzelrechts zählt als Gewähren. Prüfreihenfolge: Katalog, Selbst, Besitz, dann 409.
+- 409 (nur Gewähren und Entziehen; Zurücksetzen räumt immer auf): `student_role_exclusive` (Konto mit Rolle Schüler/in), `admin_overrides_forbidden` (Konto mit Rolle Schuladmin).
+- Lesesicht um `permission_actions [{permission, name, group, action: grant|withdraw|clear, allowed, code, reason}]` erweitert: je Katalogrecht die eine Aktion für den **Betrachter** (`clear`, wenn das Konto ein Einzelrecht dazu hat, sonst `withdraw`, wenn das Recht über eine Rolle gilt, sonst `grant`); `code`/`reason` nennen, warum sie gesperrt ist. Die Herkünfte `individual`/`withdrawn` in `permissions[].sources` sind jetzt befüllt.
+- Audit: `permission.granted` / `permission.withdrawn` / `permission.override_cleared`, Objekt = Konto, Akteur = Verwalter, Kontext `{permission, mode}` (`added`/`removed`; beim Zurücksetzen der zurückgesetzte Modus).
+- Web: Abschnitt „Einzelrechte“ in `AccountDetail` (alle Katalogrechte mit Herkunft und der einen Aktion; gesperrte Aktionen deaktiviert mit Begründung); `AccountsPage`-Prop `canAssignPermissions` (Recht `permissions.assign` aus `GET /api/me`).
 
 ## Letzter Schuladmin bleibt erhalten (Ticket #35)
 
