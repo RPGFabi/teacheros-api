@@ -290,7 +290,7 @@ final class AccessAdministration
             $removed = $changes->permissions === null ? [] : array_values(array_diff($role['permissions'], $changes->permissions));
             if ($added !== [] && $this->isBoundByP2($actor)) {
                 if (in_array($roleId, $service->getUserAccess((string) $actor->accountId)['role_ids'], true)) {
-                    throw new CodedException('self_escalation', 403, 'Eine Rolle, die du selbst innehast, kannst du nicht erweitern.');
+                    throw new CodedException('self_escalation', 403, 'Eine Rolle, die Sie selbst innehaben, können Sie nicht erweitern.');
                 }
                 $this->requireHolding($actor, $added);
             }
@@ -374,7 +374,7 @@ final class AccessAdministration
         $held = PermissionCatalog::service()->forUser((string) $actor->accountId);
         foreach ($permissions as $permission) {
             if (!$held->can($permission)) {
-                throw new CodedException('permission_not_held', 403, 'Du kannst nur Rechte vergeben, die du selbst besitzt.');
+                throw new CodedException('permission_not_held', 403, 'Sie können nur Rechte vergeben, die Sie selbst besitzen.');
             }
         }
     }

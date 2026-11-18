@@ -59,6 +59,13 @@ final class RoleManagementTest extends TestCase
         return $this->app->request($method, $uri, ['HTTP_AUTHORIZATION' => 'Bearer ' . TestTokens::access($sub)], $json);
     }
 
+    /** Alle Meldungen der API sprechen mit "Sie" (Du-Formen kommen nicht vor). */
+    private function assertFormalAddress(array $response): void
+    {
+        $this->assertMatchesRegularExpression('/\bSie\b/', $response['json']['error']);
+        $this->assertDoesNotMatchRegularExpression('/\b(du|dich|dir|dein\w*|kannst|besitzt|innehast)\b/i', $response['json']['error']);
+    }
+
     /** @return array<string,mixed> */
     private function create(array $body = [], string $sub = self::ADMIN): array
     {
@@ -184,6 +191,7 @@ final class RoleManagementTest extends TestCase
 
         $this->assertSame(403, $r['status']);
         $this->assertSame('permission_not_held', $r['json']['code']);
+        $this->assertFormalAddress($r);
         $this->assertCount(6, $this->call('GET', '/api/roles')['json']['roles']);
 
         $ok = $this->call('POST', '/api/roles', ['name' => 'Passt', 'permissions' => ['accounts.view']], self::MANAGER);
@@ -359,6 +367,7 @@ final class RoleManagementTest extends TestCase
         $extend = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => ['accounts.view', 'roles.manage']], self::MANAGER);
         $this->assertSame(403, $extend['status']);
         $this->assertSame('self_escalation', $extend['json']['code']);
+        $this->assertFormalAddress($extend);
 
         $shrink = $this->call('POST', '/api/roles/' . $role['id'] . '/update', ['permissions' => []], self::MANAGER);
         $this->assertSame(200, $shrink['status'], $shrink['body']);
