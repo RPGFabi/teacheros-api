@@ -8,7 +8,7 @@ final class Account
 {
     public function __construct(
         public readonly string $publicUserId,
-        public readonly string $status,
+        public readonly AccountStatus $status,
         public readonly bool $mfaRequired,
         public readonly ?string $email = null,
         public readonly string $loginName = '',
@@ -17,6 +17,6 @@ final class Account
 
     public function isActive(): bool
     {
-        return $this->status === 'active';
+        return $this->status === AccountStatus::Active;
     }
 }

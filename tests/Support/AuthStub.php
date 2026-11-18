@@ -11,7 +11,8 @@ namespace TeacherOS\Tests\Support;
  *
  *   $stub = AuthStub::start();
  *   $stub->script('invite', ['status' => 500]);   // naechste Antwort auf /internal/users/invite
- *   $stub->script('invite', ['delay' => 1.0]);    // antwortet erst nach 1 s (Timeout-Test)
+ *   $stub->script('invite', ['delay' => 2.0]);    // antwortet erst nach 2 s (Timeout-Test; API-Timeout im Test: 0,5 s)
+ *   $stub->script('invite', ['status' => 200, 'raw' => '<html>']);  // Antwort, die kein JSON ist
  *   $stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => '...', 'created' => true, 'already_active' => true]]);
  *   $stub->calls();                               // aufgezeichnete Aufrufe inkl. signature_valid
  *   $app->cli(..., $stub->env());                 // AUTH_SERVICE_URL + Secret fuer die API

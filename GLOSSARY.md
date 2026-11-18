@@ -32,6 +32,10 @@ _Avoid_: Registrierung, Provisionierung
 Ein kurzer, einmal angezeigter Code, mit dem eine Person ohne E-Mail-Adresse ihre Einladung annimmt; er wird auf einer ausgedruckten Einladungskarte (Text und QR-Code) weitergegeben. Eine erneute Einladung macht ihn ungültig.
 _Avoid_: PIN, Zugangscode, Passwort
 
+**Anmeldedienst**:
+Der getrennte Dienst je Schulinstanz, der Anmeldung, Passwörter, TOTP und Einladungen verwaltet.
+_Avoid_: Auth-Server, Identity Provider
+
 **Schuladmin**:
 Eine Rolle mit allen Rechten an der Schulinstanz, außer dem Zugriff auf private ICE-Daten. Der erste Schuladmin wird von der Plattform eingeladen, weitere setzen bestehende Schuladmins ein.
 _Avoid_: Admin, Administrator, Superuser

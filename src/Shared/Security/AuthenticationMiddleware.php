@@ -45,7 +45,7 @@ final class AuthenticationMiddleware
             $response->json(['error' => 'Unknown account', 'code' => 'unknown_account'], 401);
             return false;
         }
-        if ($account->status === 'invited') {
+        if ($account->status === AccountStatus::Invited) {
             // Ein gueltiges Token gibt es erst nach Annahme der Einladung: erste Anmeldung => aktiv.
             $account = self::activate($account);
         }

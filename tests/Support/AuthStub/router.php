@@ -16,7 +16,7 @@ declare(strict_types=1);
  * nacheinander, daher genuegt eine einfache Datei.
  *
  * Steuerung (nur fuer Tests):
- *   POST /__stub/script  {"invite":[{"status":500,"body":{...},"delay":1.5}]}  haengt Antworten an; je Aufruf wird eine verbraucht
+ *   POST /__stub/script  {"invite":[{"status":500,"body":{...},"delay":1.5,"raw":"kein JSON"}]}  haengt Antworten an; je Aufruf wird eine verbraucht
  *   GET  /__stub/calls   aufgezeichnete Aufrufe
  */
 
@@ -97,6 +97,11 @@ if ($scripted !== null) {
     if (isset($scripted['delay'])) {
         usleep((int) ($scripted['delay'] * 1_000_000));
     }
+    if (isset($scripted['raw'])) { // Antwort, die kein JSON ist
+        http_response_code((int) ($scripted['status'] ?? 200));
+        echo $scripted['raw'];
+        exit;
+    }
     $reply((int) ($scripted['status'] ?? 200), $scripted['body'] ?? ['ok' => true]);
 }
 
@@ -115,7 +120,10 @@ if ($kind === 'invite') {
     $created = !isset($state['invited'][$key]);
     $state['invited'][$key] = true;
     $save($state);
-    $reply(200, ['ok' => true, 'public_user_id' => $uuid($key), 'created' => $created, 'already_active' => false]);
+    $reply(200, [
+        'ok' => true, 'public_user_id' => $uuid($key), 'created' => $created, 'already_active' => false,
+        'expires_at' => gmdate('Y-m-d\TH:i:s\Z', time() + 72 * 3600), // wie der echte Dienst (ISO 8601, UTC)
+    ]);
 }
 
 $publicId = (string) ($payload['public_user_id'] ?? '');

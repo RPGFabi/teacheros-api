@@ -164,6 +164,24 @@ final class FirstSchuladminCliTest extends TestCase
         $this->assertSame('unknown_account', $this->meAsCode($old), 'die ersetzte Einladung gibt keinen Zugang');
     }
 
+    public function testDasErsetzenEinerEinladungHinterlaesstEinenAuditEintragFuerDasGeloeschteKonto(): void
+    {
+        $this->assertSame(0, $this->invite()['code']);
+        $old = $this->app->accounts()[0]['public_user_id'];
+
+        $this->assertSame(0, $this->invite(['--email=neu@schule.test'])['code']);
+
+        $new = $this->app->accounts()[0]['public_user_id'];
+        $this->assertSame(
+            ['account.invited', 'role.assigned', 'role.revoked', 'account.invitation_withdrawn', 'account.reinvited', 'role.assigned'],
+            $this->auditActions(),
+        );
+        $withdrawn = array_values(array_filter($this->app->auditLog(), static fn ($e) => $e['action'] === 'account.invitation_withdrawn'))[0];
+        $this->assertSame(['cli', null, 'account', $old], [$withdrawn['actor_type'], $withdrawn['actor_account_id'], $withdrawn['object_type'], $withdrawn['object_id']]);
+        $this->assertNotSame($old, $new);
+        $this->assertStringNotContainsString('admin@schule.test', json_encode($withdrawn), 'keine E-Mail im Audit-Eintrag');
+    }
+
     /** @return array<string, array{array}> Skripte, mit denen der Anmeldedienst fehlschlaegt. */
     public static function authFailures(): array
     {
@@ -254,7 +272,7 @@ final class FirstSchuladminCliTest extends TestCase
         $this->assertSame([], $this->app->auditLog());
     }
 
-    public function testAnmeldedienstMeldetUsernameTakenDannEntstehtNichtsLokal(): void
+    public function testAnmeldedienstMeldetVergebenenAnmeldenamenDannEntstehtNichtsLokal(): void
     {
         $this->stub->script('invite', ['status' => 409, 'body' => ['error' => 'taken', 'code' => 'username_taken']]);
 
@@ -265,7 +283,65 @@ final class FirstSchuladminCliTest extends TestCase
         $this->assertSame([], $this->app->accounts());
     }
 
-    public function testAnmeldenameWirdAlsUsernameWeitergegebenUndLokalGespeichert(): void
+    /** @return array<string, array{array, string}> */
+    public static function fachlicheAblehnungen(): array
+    {
+        return [
+            'ungueltiger Anmeldename' => [['status' => 400, 'body' => ['error' => 'bad', 'code' => 'invalid_username']], 'invalid_username'],
+            'Anmeldename ohne Schalter' => [['status' => 400, 'body' => ['error' => 'off', 'code' => 'username_login_disabled']], 'username_login_disabled'],
+            'Konto gesperrt' => [['status' => 409, 'body' => ['error' => 'disabled', 'code' => 'account_disabled']], 'account_disabled'],
+            '400 ohne Code' => [['status' => 400, 'body' => ['error' => 'Webhook processing failed.']], 'invalid_request'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('fachlicheAblehnungen')]
+    public function testFachlicheAblehnungDesAnmeldedienstesIstExitCode3MitCodeUndLegtNichtsAn(array $scripted, string $code): void
+    {
+        $this->stub->script('invite', $scripted);
+
+        $r = $this->invite();
+
+        $this->assertSame(3, $r['code'], 'fachlich abgelehnt, nicht "Anmeldedienst nicht verfuegbar" (4)');
+        $this->assertStringContainsString($code, $r['err']);
+        $this->assertSame([], $this->app->accounts());
+        $this->assertSame([], $this->app->auditLog());
+    }
+
+    public function testEmailUndAnmeldenameWerdenKleingeschriebenGesendetUndGespeichert(): void
+    {
+        $r = $this->invite(['--email=Admin@Schule.TEST', '--login-name=Frau.Admin']);
+
+        $this->assertSame(0, $r['code'], $r['err']);
+        $body = $this->stub->inviteCalls()[0]['body'];
+        $this->assertSame(['admin@schule.test', 'frau.admin'], [$body['email'], $body['username']]);
+        $account = $this->app->accounts()[0];
+        $this->assertSame(['admin@schule.test', 'frau.admin'], [$account['email'], $account['login_name']]);
+    }
+
+    public function testUngueltigeEmailIstEinFalscherAufrufOhneAnmeldedienst(): void
+    {
+        $r = $this->invite(['--email=keine-mail']);
+
+        $this->assertSame(2, $r['code']);
+        $this->assertSame([], $this->stub->calls());
+    }
+
+    public function testDasAblaufdatumDerEinladungWirdZusammenMitDemCodeAusgegeben(): void
+    {
+        $this->stub->script('invite', ['body' => [
+            'ok' => true, 'public_user_id' => '77777777-7777-4777-8777-777777777777', 'created' => true, 'already_active' => false,
+            'username' => 'schueler.eins', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS', 'expires_at' => '2026-11-20T12:34:56Z',
+        ]]);
+
+        $r = $this->invite(['--login-name=schueler.eins']);
+
+        $this->assertSame(0, $r['code'], $r['err']);
+        $this->assertStringContainsString('ABCD-EFGH-JKMN-PQRS', $r['out']);
+        $this->assertStringContainsString('2026-11-20T12:34:56Z', $r['out']);
+        $this->assertStringNotContainsString('2026-11-20', json_encode([$this->app->accounts(), $this->app->auditLog()]), 'das Ablaufdatum wird nicht gespeichert');
+    }
+
+    public function testAnmeldenameWirdAnDenAnmeldedienstWeitergegebenUndLokalGespeichert(): void
     {
         $r = $this->invite(['--email=' . self::EMAIL, '--login-name=frau.admin']);
 
@@ -276,7 +352,7 @@ final class FirstSchuladminCliTest extends TestCase
         $this->assertSame(self::EMAIL, $account['email']);
     }
 
-    public function testUsernameUndEinladungscodeAusDerAntwortWerdenUebernommenUndDerCodeNurEinmalAusgegeben(): void
+    public function testAnmeldenameUndEinladungscodeAusDerAntwortWerdenUebernommenUndDerCodeNurEinmalAusgegeben(): void
     {
         // Vertrag ab G6: der Anmeldedienst nennt den endgueltigen Namen und bei Einladung ohne E-Mail einen Code.
         $this->stub->script('invite', ['body' => [

@@ -18,15 +18,24 @@ use TeacherOS\Shared\Exceptions\CodedException;
  */
 final class AuthServiceClient
 {
+    /** Deutsche Texte fuer die fachlichen Codes, die der Anmeldedienst kennt (andere Codes bekommen einen allgemeinen Text). */
+    private const REJECTIONS = [
+        'username_taken' => 'Der Anmeldename ist schon vergeben.',
+        'invalid_username' => 'Der Anmeldename ist ungueltig.',
+        'username_login_disabled' => 'Der Anmeldedienst erlaubt keine Konten ohne E-Mail-Adresse (Anmeldename-Anmeldung ist ausgeschaltet).',
+        'account_disabled' => 'Das Konto ist im Anmeldedienst gesperrt und kann nicht eingeladen werden.',
+    ];
+
     /**
      * Laedt ein Konto ein (G5, idempotent). Ein Anmeldename wird als `username` mitgesendet; die Antwort
-     * kann ab G6 `username` und bei Einladung ohne E-Mail einmalig `invite_code` enthalten.
+     * kann ab G6 `username`, `expires_at` und bei Einladung ohne E-Mail einmalig `invite_code` enthalten.
      *
-     * @throws AuthServiceUnavailableException bei Ausfall, Timeout, 5xx oder unerwarteter Antwort
-     * @throws CodedException `username_taken` (409), wenn der Anmeldedienst den Namen schon vergeben hat,
-     *                        `invalid_username` (400), wenn er ihn nicht annimmt
+     * @throws AuthServiceUnavailableException bei Ausfall, Timeout, 5xx oder unlesbarer Antwort
+     * @throws CodedException fachliche Ablehnung des Anmeldedienstes mit dessen Status und Code, z. B.
+     *                        `username_taken` (409), `invalid_username` (400), `username_login_disabled` (400),
+     *                        `account_disabled` (409); 400 ohne Code ist `invalid_request`
      */
-    public function invite(?string $email, ?string $username): InviteResult
+    public function invite(?string $email, ?string $username): InviteAnswer
     {
         $payload = ['event' => 'user.invite'];
         if ($email !== null) {
@@ -38,23 +47,18 @@ final class AuthServiceClient
 
         [$status, $json] = $this->post('/internal/users/invite', $payload);
 
-        if ($status === 409 && ($json['code'] ?? null) === 'username_taken') {
-            throw new CodedException('username_taken', 409, 'Der Anmeldename ist schon vergeben.');
-        }
-        if ($status === 400 && ($json['code'] ?? null) === 'invalid_username') {
-            throw new CodedException('invalid_username', 400, 'Der Anmeldename ist ungueltig.');
-        }
         $id = $json['public_user_id'] ?? null;
         if ($status !== 200 || !is_string($id) || $id === '') {
-            throw new AuthServiceUnavailableException("unerwartete Antwort (HTTP $status) auf die Einladung");
+            throw $this->failure($status, $json, 'die Einladung');
         }
 
-        return new InviteResult(
+        return new InviteAnswer(
             $id,
             ($json['created'] ?? false) === true,
             ($json['already_active'] ?? false) === true,
             is_string($json['username'] ?? null) ? $json['username'] : null,
             is_string($json['invite_code'] ?? null) ? $json['invite_code'] : null,
+            is_string($json['expires_at'] ?? null) ? $json['expires_at'] : null,
         );
     }
 
@@ -62,13 +66,36 @@ final class AuthServiceClient
      * Loescht ein Konto im Anmeldedienst (idempotent), z. B. eine ersetzte, nie angenommene Einladung.
      *
      * @throws AuthServiceUnavailableException
+     * @throws CodedException wie bei {@see invite()}
      */
     public function deleteUser(string $publicUserId): void
     {
-        [$status] = $this->post('/internal/users/delete', ['event' => 'user.delete', 'public_user_id' => $publicUserId]);
+        [$status, $json] = $this->post('/internal/users/delete', ['event' => 'user.delete', 'public_user_id' => $publicUserId]);
         if ($status !== 200) {
-            throw new AuthServiceUnavailableException("unerwartete Antwort (HTTP $status) auf das Loeschen");
+            throw $this->failure($status, $json, 'das Loeschen');
         }
+    }
+
+    /**
+     * Uebersetzt eine nicht erfolgreiche Antwort: fachliche 4xx (mit `code`, bei 400 mit lesbarer Antwort auch ohne: `invalid_request`)
+     * gehen mit ihrem Status und Code an den Aufrufer; alles andere (5xx, Fehlkonfiguration wie ein falsches
+     * Secret, unlesbare Antwort) ist "Anmeldedienst nicht verfuegbar".
+     *
+     * @param array<string,mixed> $json
+     */
+    private function failure(int $status, array $json, string $what): CodedException
+    {
+        if ($status >= 400 && $status < 500) {
+            $code = $json['code'] ?? null;
+            if (is_string($code) && preg_match('/^[a-z][a-z0-9_]{1,63}$/', $code) === 1) {
+                return new CodedException($code, $status, self::REJECTIONS[$code] ?? "Der Anmeldedienst hat die Anfrage abgelehnt ($code).");
+            }
+            if ($status === 400 && $json !== [] && !isset($json['code'])) {
+                return new CodedException('invalid_request', 400, 'Der Anmeldedienst hat die Anfrage als ungueltig abgelehnt.');
+            }
+        }
+
+        return new AuthServiceUnavailableException("unerwartete Antwort (HTTP $status) auf $what");
     }
 
     /** @return array{int, array<string,mixed>} */

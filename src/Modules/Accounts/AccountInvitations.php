@@ -8,10 +8,12 @@ use Hoelzle\Core\Database\DB;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
 use TeacherOS\Shared\AuthService\AuthServiceClient;
+use TeacherOS\Shared\AuthService\InviteAnswer;
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Security\AccessAdministration;
 use TeacherOS\Shared\Security\Account;
 use TeacherOS\Shared\Security\AccountRepository;
+use TeacherOS\Shared\Security\AccountStatus;
 
 /**
  * Einladung (GLOSSARY.md): der einzige Weg, auf dem ein Konto entsteht (ADR 0002 G5).
@@ -34,7 +36,10 @@ final class AccountInvitations
      * Laedt den ersten Schuladmin ein (CLI, Akteur `cli`). Ohne $allowAdditionalAdmin lehnt der Aufruf
      * ab (`admin_exists`), sobald es ein aktives Konto mit der Rolle Schuladmin gibt. Eine noch nicht
      * angenommene Einladung eines Schuladmins darf ohne Option erneut ergehen, auch an eine andere
-     * Adresse: die frueheren Einladungen werden dann ersetzt (beim Anmeldedienst geloescht, lokal entfernt).
+     * Adresse: die frueheren Einladungen werden dann ersetzt (beim Anmeldedienst geloescht, lokal entfernt,
+     * je mit eigenem Audit-Eintrag `account.invitation_withdrawn`).
+     *
+     * E-Mail und Anmeldename sind schon normalisiert ({@see InvitationIdentifiers}).
      *
      * @throws CodedException `already_active`, `account_inactive`, `username_taken`, `email_taken`, `admin_exists`
      * @throws \TeacherOS\Shared\AuthService\AuthServiceUnavailableException
@@ -55,50 +60,39 @@ final class AccountInvitations
             ));
         }
 
-        $invite = $this->authService->invite($email, $loginName);
+        $answer = $this->authService->invite($email, $loginName);
         foreach ($replaced as $oldId) {
             $this->authService->deleteUser($oldId);
         }
-        $name = $invite->username ?? $target?->loginName ?? $loginName ?? $email;
+        $name = $this->loginNameFor($answer, $target, $email, $loginName);
+        $reinvited = $target !== null || $replaced !== [];
 
-        $pdo = DB::getInstance();
-        $pdo->beginTransaction();
-        try {
+        $invitedAt = null;
+        $this->transaction(function () use ($target, $answer, $email, $name, $actor, $replaced, $reinvited, &$invitedAt): void {
             foreach ($replaced as $oldId) {
                 $this->access->revokeAllRoles($oldId, $actor);
+                $this->audit->record($actor, AuditLog::ACCOUNT_INVITATION_WITHDRAWN, 'account', $oldId);
                 $this->accounts->delete($oldId);
             }
-            $reinvited = $target !== null || $replaced !== [];
-            if ($target !== null) {
-                $this->accounts->markInvitedNow($target->publicUserId);
-            } else {
-                $this->accounts->create($invite->publicUserId, 'invited', $email, $name);
-            }
+            $invitedAt = $this->storeInvitation($target, $answer, $email, $name);
             $this->audit->record(
                 $actor,
                 $reinvited ? AuditLog::ACCOUNT_REINVITED : AuditLog::ACCOUNT_INVITED,
                 'account',
-                $invite->publicUserId,
+                $answer->publicUserId,
                 $replaced === [] ? null : ['replaces_invitations' => count($replaced)],
             );
-            $this->access->grantInitialAdmin($invite->publicUserId, $actor);
-            $pdo->commit();
-        } catch (\PDOException $e) {
-            $pdo->rollBack();
-            throw $this->conflictFrom($e) ?? $e;
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
+            $this->access->grantInitialAdmin($answer->publicUserId, $actor);
+        });
 
-        return new InvitationResult($invite->publicUserId, $email, $name, $reinvited, $invite->inviteCode);
+        return new InvitationResult($answer->publicUserId, $email, $name, $reinvited, $invitedAt, $answer->inviteCode, $answer->expiresAt);
     }
 
     /**
      * Laedt ein Konto per E-Mail und/oder Anmeldename ein (Web, Akteur ist das einladende Konto). Gehoert die E-Mail schon einem
      * noch nicht angenommenen Konto (ohne E-Mail: der Anmeldename), ist das eine erneute Einladung desselben
      * Kontos (Wiederholung gefahrlos). Ohne E-Mail liefert das Ergebnis einmalig den Einladungscode.
-     * Rollen werden hier nicht vergeben.
+     * Rollen werden hier nicht vergeben. E-Mail und Anmeldename sind schon normalisiert ({@see InvitationIdentifiers}).
      *
      * @throws CodedException `already_active`, `account_inactive`, `username_taken`, `email_taken`
      * @throws \TeacherOS\Shared\AuthService\AuthServiceUnavailableException
@@ -127,24 +121,38 @@ final class AccountInvitations
     /** Anmeldedienst, dann Konto und Audit-Eintrag in einer Transaktion (ohne Rolle). */
     private function send(?Account $target, ?string $email, ?string $loginName, Actor $actor): InvitationResult
     {
-        $invite = $this->authService->invite($email, $loginName);
-        $name = $invite->username ?? $target?->loginName ?? $loginName ?? $email;
+        $answer = $this->authService->invite($email, $loginName);
+        $name = $this->loginNameFor($answer, $target, $email, $loginName);
 
-        $this->transaction(function () use ($target, $invite, $email, $name, $actor): void {
-            if ($target !== null) {
-                $this->accounts->markInvitedNow($target->publicUserId);
-            } else {
-                $this->accounts->create($invite->publicUserId, 'invited', $email, $name);
-            }
+        $invitedAt = null;
+        $this->transaction(function () use ($target, $answer, $email, $name, $actor, &$invitedAt): void {
+            $invitedAt = $this->storeInvitation($target, $answer, $email, $name);
             $this->audit->record(
                 $actor,
                 $target !== null ? AuditLog::ACCOUNT_REINVITED : AuditLog::ACCOUNT_INVITED,
                 'account',
-                $invite->publicUserId,
+                $answer->publicUserId,
             );
         });
 
-        return new InvitationResult($invite->publicUserId, $email, $name, $target !== null, $invite->inviteCode);
+        return new InvitationResult($answer->publicUserId, $email, $name, $target !== null, $invitedAt, $answer->inviteCode, $answer->expiresAt);
+    }
+
+    /** Der Anmeldename, den das Konto behaelt: wie der Anmeldedienst ihn nennt, sonst der bekannte oder gesendete, sonst die E-Mail. */
+    private function loginNameFor(InviteAnswer $answer, ?Account $target, ?string $email, ?string $loginName): string
+    {
+        return $answer->username ?? $target?->loginName ?? $loginName ?? (string) $email;
+    }
+
+    /** Legt das Konto als `invited` an bzw. setzt "Eingeladen am" neu; liefert "Eingeladen am" (ISO 8601, UTC). */
+    private function storeInvitation(?Account $target, InviteAnswer $answer, ?string $email, string $name): ?string
+    {
+        if ($target !== null) {
+            $this->accounts->markInvitedNow($target->publicUserId);
+        } else {
+            $this->accounts->create($answer->publicUserId, AccountStatus::Invited, $email, $name);
+        }
+        return $this->accounts->invitedAt($answer->publicUserId);
     }
 
     /** Fuehrt $work in einer DB-Transaktion aus; Eindeutigkeitsverletzungen werden zu `email_taken`/`username_taken`. */
@@ -188,10 +196,10 @@ final class AccountInvitations
 
     private function assertInvitable(Account $account): void
     {
-        if ($account->status === 'active') {
+        if ($account->status === AccountStatus::Active) {
             throw new CodedException('already_active', 409, 'Das Konto ist schon aktiv.');
         }
-        if ($account->status === 'inactive') {
+        if ($account->status === AccountStatus::Inactive) {
             throw new CodedException('account_inactive', 409, 'Das Konto ist deaktiviert und kann nicht eingeladen werden.');
         }
     }

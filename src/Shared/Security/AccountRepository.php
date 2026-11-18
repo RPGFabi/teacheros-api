@@ -55,15 +55,16 @@ final class AccountRepository
     }
 
     /** Legt ein Konto an. Ohne Anmeldenamen gilt die E-Mail, sonst die public_user_id (Entwickler-Skript). */
-    public function create(string $publicUserId, string $status = 'invited', ?string $email = null, ?string $loginName = null): void
+    public function create(string $publicUserId, AccountStatus $status = AccountStatus::Invited, ?string $email = null, ?string $loginName = null): void
     {
         DB::getInstance()->prepare(
             'INSERT INTO `accounts` (`public_user_id`, `status`, `email`, `login_name`, `invited_at`)
-             VALUES (:id, :status, :email, :login_name, IF(:status2 = \'invited\', CURRENT_TIMESTAMP, NULL))'
+             VALUES (:id, :status, :email, :login_name, IF(:status2 = :invited, CURRENT_TIMESTAMP, NULL))'
         )->execute([
             'id' => $publicUserId,
-            'status' => $status,
-            'status2' => $status,
+            'status' => $status->value,
+            'status2' => $status->value,
+            'invited' => AccountStatus::Invited->value,
             'email' => $email,
             'login_name' => $loginName ?? $email ?? $publicUserId,
         ]);
@@ -79,8 +80,8 @@ final class AccountRepository
     /** Hebt ein `invited`-Konto auf `active`. @return bool true nur, wenn dieser Aufruf den Wechsel vollzogen hat */
     public function activateIfInvited(string $publicUserId): bool
     {
-        $stmt = DB::getInstance()->prepare("UPDATE `accounts` SET `status` = 'active' WHERE `public_user_id` = :id AND `status` = 'invited'");
-        $stmt->execute(['id' => $publicUserId]);
+        $stmt = DB::getInstance()->prepare('UPDATE `accounts` SET `status` = :active WHERE `public_user_id` = :id AND `status` = :invited');
+        $stmt->execute(['id' => $publicUserId, 'active' => AccountStatus::Active->value, 'invited' => AccountStatus::Invited->value]);
         return $stmt->rowCount() === 1;
     }
 
@@ -92,17 +93,17 @@ final class AccountRepository
     /** Gibt es ein aktives Konto mit der Rolle $roleKey? */
     public function existsActiveWithRole(string $roleKey): bool
     {
-        return $this->withRole($roleKey, 'active') !== [];
+        return $this->withRole($roleKey, AccountStatus::Active) !== [];
     }
 
     /** @return list<string> public_user_ids der nur eingeladenen Konten mit der Rolle $roleKey */
     public function invitedWithRole(string $roleKey): array
     {
-        return $this->withRole($roleKey, 'invited');
+        return $this->withRole($roleKey, AccountStatus::Invited);
     }
 
     /** @return list<string> */
-    private function withRole(string $roleKey, string $status): array
+    private function withRole(string $roleKey, AccountStatus $status): array
     {
         $stmt = DB::getInstance()->prepare(
             'SELECT a.`public_user_id` FROM `accounts` a
@@ -110,7 +111,7 @@ final class AccountRepository
              JOIN `permission_roles` r ON r.`id` = ur.`role_id`
              WHERE r.`role_key` = :role AND a.`status` = :status ORDER BY a.`id`'
         );
-        $stmt->execute(['role' => $roleKey, 'status' => $status]);
+        $stmt->execute(['role' => $roleKey, 'status' => $status->value]);
         return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
     }
 
@@ -121,6 +122,6 @@ final class AccountRepository
         $row = $stmt->fetch();
         return $row === false
             ? null
-            : new Account($row['public_user_id'], $row['status'], (bool) $row['mfa_required'], $row['email'], $row['login_name']);
+            : new Account($row['public_user_id'], AccountStatus::from($row['status']), (bool) $row['mfa_required'], $row['email'], $row['login_name']);
     }
 }

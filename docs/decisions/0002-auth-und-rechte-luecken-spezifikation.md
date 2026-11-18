@@ -166,6 +166,14 @@ Höchstens 200 IDs pro Aufruf. `required: false` setzt `mfa_required_at = NULL`.
 
 **Ergänzungen aus der Umsetzung (Ticket #27):** Der Anmeldename wird getrimmt und kleingeschrieben gespeichert, und die Einladungsantwort enthält ihn als `username`. Ein ungültiger Name ergibt `400 {"code":"invalid_username"}`. Eine Einladung ohne E-Mail bei ausgeschaltetem Schalter ergibt `400 {"code":"username_login_disabled"}`, weil sich ein solches Konto nie anmelden könnte. Ein eigenes `email_taken` kennt der Anmeldedienst nicht: Eine bekannte E-Mail führt wie in G5 zu einer erneuten Einladung, die Eindeutigkeit prüft die API lokal. `credentials.email` wird in einer eigenen Migration 0006 nullbar. `/updatePassword` verlangt weiter eine E-Mail.
 
+**Ergänzungen aus der Umsetzung (API, Web und Anmeldedienst, Tickets #26–#28):**
+- **Normalisierung:** Die API schreibt E-Mail und Anmeldename vor jedem Aufruf des Anmeldedienstes klein (Web-Endpunkt und CLI gleich), geprüft an einer Stelle.
+- **Erneute Einladung statt Konflikt:** Wird die E-Mail eines noch nicht angenommenen (`eingeladen`) Kontos erneut eingeladen, ist das eine erneute Einladung desselben Kontos (`201`, kein zweites Konto, gefahrlos bei Doppelklick). `email_taken` gibt es nur bei einem Konflikt mit einem anderen Konto, nämlich wenn die E-Mail einem Konto mit abweichendem Anmeldenamen gehört; `username_taken`, wenn der Anmeldename einem anderen Konto gehört.
+- **Fehler des Anmeldedienstes:** Nur Netzwerkfehler, Zeitüberschreitung, 5xx und unlesbare Antworten sind `502 auth_unavailable`. Fachliche 4xx des Dienstes mit `code` (`username_taken` 409, `invalid_username` 400, `username_login_disabled` 400, `account_disabled` 409) gibt die API mit demselben Status und Code weiter; ein 400 ohne Code wird `400 invalid_request`. Die CLI beendet sich bei fachlichen Fehlern mit Exit 3, bei `auth_unavailable` mit 4.
+- **`/acceptInvite`:** Token bzw. Code werden vor dem Passwort geprüft. 400 trägt zusätzlich `code`: `invalid_invite` (unbrauchbar, abgelaufen, benutzt) oder `weak_password` (die Einladung bleibt dann gültig); die Meldungstexte sind unverändert.
+- **Ablaufdatum:** Die Einladungsantwort des Anmeldedienstes enthält bei neuer oder erneuerter Einladung `expires_at` (ISO 8601, UTC). Die API reicht es als `invite_expires_at` durch, ohne es zu speichern; die Einladungskarte zeigt „gültig bis“, die CLI gibt es mit dem Code aus.
+- **Audit:** Ersetzt die CLI eine nie angenommene Einladung, bekommt das gelöschte Konto einen eigenen Eintrag `account.invitation_withdrawn` (Objekt = altes Konto, ohne E-Mail).
+
 **Bewusst nicht Teil von G6:** Sammel-Einladung für ganze Klassen und Passwort-Reset durch die Schule ohne E-Mail. Für beide gibt es eigene Issues.
 
 ### Nicht Teil der Erweiterung (bewusst)
@@ -277,7 +285,7 @@ Private ICE-Rohdaten sind **ausschließlich** über ein `IceObservationRepositor
 
 ## Reihenfolge
 
-1. **B1, B2, B4, B5, B7** im Backend. Sie blockieren nichts, weil sie ohne Änderungen am Auth-Dienst testbar sind (Auth-Aufrufe hinter dem Interface `AuthServiceClient` mit einem Fake im Test).
+1. **B1, B2, B4, B5, B7** im Backend. Sie blockieren nichts, weil sie ohne Änderungen am Auth-Dienst testbar sind. Die Test-Seam für den `AuthServiceClient` ist ein HTTP-Stub an der Netzwerkgrenze (`tests/Support/AuthStub.php`, über `AUTH_SERVICE_URL` erreichbar) statt Interface und Fake: Die API-Tests laufen per `php-cgi` in eigenen Prozessen, ein Fake im Testprozess wäre dort nicht erreichbar, und der Stub prüft zugleich Signatur und Fehlerverhalten (Timeout, 5xx, unlesbare Antwort) wie im Betrieb.
 2. **G5 und G4** im Auth-Dienst, weil sie für das erste echte Konto nötig sind.
 3. **G3, G1 und G2**, danach B3 scharf schalten.
 4. **B6**, sobald die ersten Fachzuordnungen (Fachgruppe, Klassenleitung) existieren.

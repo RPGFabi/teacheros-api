@@ -59,7 +59,7 @@ final class AppBootstrap
         $response->json([
             'account' => [
                 'id' => $session->account->publicUserId,
-                'status' => $session->account->status,
+                'status' => $session->account->status->value,
                 'mfa_required' => $session->account->mfaRequired,
             ],
             'permissions' => PermissionCatalog::effectiveFor($session->account->publicUserId),

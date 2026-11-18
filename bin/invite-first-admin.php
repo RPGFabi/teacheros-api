@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 // Laedt den ersten Schuladmin einer Schulinstanz ein (Spec #10, Ticket #25):
 //   php bin/invite-first-admin.php --email=admin@schule.example [--login-name=name] [--allow-additional-admin]
-// Exit-Codes: 0 ok, 2 Aufruf falsch, 3 abgelehnt/Konflikt (z. B. aktiver Schuladmin vorhanden), 4 Anmeldedienst nicht verfuegbar.
+// Exit-Codes: 0 ok, 2 Aufruf falsch, 3 fachlich abgelehnt (auch vom Anmeldedienst, z. B. aktiver Schuladmin vorhanden,
+// Anmeldename vergeben), 4 Anmeldedienst nicht verfuegbar (Ausfall, Timeout, unlesbare Antwort).
 
 use Hoelzle\Core\Application;
 use Hoelzle\Core\Config\Config;
 use TeacherOS\Modules\Accounts\AccountInvitations;
+use TeacherOS\Modules\Accounts\InvitationIdentifiers;
 use TeacherOS\Shared\AuthService\AuthServiceUnavailableException;
 use TeacherOS\Shared\Exceptions\CodedException;
 
@@ -18,15 +20,15 @@ Application::initialize(dirname(__DIR__));
 Config::load();
 
 $opts = getopt('', ['email::', 'login-name::', 'allow-additional-admin']);
-$email = isset($opts['email']) && is_string($opts['email']) && trim($opts['email']) !== '' ? trim($opts['email']) : null;
-$loginName = isset($opts['login-name']) && is_string($opts['login-name']) && trim($opts['login-name']) !== '' ? trim($opts['login-name']) : null;
-if (($email === null && $loginName === null) || ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false)) {
+try {
+    $ids = InvitationIdentifiers::from($opts['email'] ?? null, $opts['login-name'] ?? null);
+} catch (CodedException) {
     fwrite(STDERR, "Aufruf: php bin/invite-first-admin.php [--email=<adresse>] [--login-name=<name>] (mindestens eins) [--allow-additional-admin]\n");
     exit(2);
 }
 
 try {
-    $result = (new AccountInvitations())->inviteFirstSchuladmin($email, $loginName, isset($opts['allow-additional-admin']));
+    $result = (new AccountInvitations())->inviteFirstSchuladmin($ids->email, $ids->loginName, isset($opts['allow-additional-admin']));
 } catch (AuthServiceUnavailableException $e) {
     fwrite(STDERR, "Fehler (auth_unavailable): {$e->getMessage()}\nNichts wurde angelegt; der Aufruf kann gefahrlos wiederholt werden.\n");
     exit(4);
@@ -38,4 +40,7 @@ try {
 echo ($result->reinvited ? 'Erneut eingeladen' : 'Eingeladen') . ": {$result->loginName} (Konto {$result->publicUserId})\n";
 if ($result->inviteCode !== null) {
     echo "Einladungscode (wird nur jetzt angezeigt): {$result->inviteCode}\n";
+}
+if ($result->inviteExpiresAt !== null) {
+    echo "Gueltig bis: {$result->inviteExpiresAt}\n";
 }

@@ -7,8 +7,8 @@ namespace TeacherOS\Modules\Accounts;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Shared\Audit\Actor;
-use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Security\AccountRepository;
+use TeacherOS\Shared\Security\AccountStatus;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 
 /**
@@ -24,16 +24,9 @@ final class AccountsController
 
     public static function invite(Request $request, Response $response): void
     {
-        $email = self::text($request->getBody('email'));
-        $loginName = self::text($request->getBody('login_name'));
-        if ($email === null && $loginName === null) {
-            throw new CodedException('identifier_required', 400, 'Eine E-Mail-Adresse oder ein Anmeldename ist erforderlich.');
-        }
-        if ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
-            throw new CodedException('invalid_email', 400, 'Die E-Mail-Adresse ist ungueltig.');
-        }
+        $ids = InvitationIdentifiers::from($request->getBody('email'), $request->getBody('login_name'));
 
-        $result = (new AccountInvitations())->invite($email === null ? null : strtolower($email), $loginName === null ? null : strtolower($loginName), self::actor());
+        $result = (new AccountInvitations())->invite($ids->email, $ids->loginName, self::actor());
         $response->json(self::payload($result), 201);
     }
 
@@ -48,28 +41,22 @@ final class AccountsController
         return Actor::account(AuthenticationMiddleware::current()->account->publicUserId);
     }
 
-    /** `invite_code` steht nur im Ergebnis dieses Aufrufs (einmalig) und wird nirgends gespeichert. */
+    /**
+     * `invite_code` und `invite_expires_at` stehen nur im Ergebnis dieses Aufrufs (einmalig) und werden nirgends
+     * gespeichert; `null`, wenn der Anmeldedienst sie nicht liefert (kein Code bei Einladung per E-Mail).
+     */
     private static function payload(InvitationResult $result): array
     {
-        $repository = new AccountRepository();
-        $account = $repository->findByPublicUserId($result->publicUserId);
         return [
             'account' => [
                 'id' => $result->publicUserId,
                 'email' => $result->email,
                 'login_name' => $result->loginName,
-                'status' => $account?->status ?? 'invited',
-                'invited_at' => $repository->invitedAt($result->publicUserId),
+                'status' => AccountStatus::Invited->value,
+                'invited_at' => $result->invitedAt,
             ],
             'invite_code' => $result->inviteCode,
+            'invite_expires_at' => $result->inviteExpiresAt,
         ];
-    }
-
-    private static function text(mixed $value): ?string
-    {
-        if (!is_string($value) || trim($value) === '') {
-            return null;
-        }
-        return trim($value);
     }
 }

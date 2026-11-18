@@ -253,7 +253,7 @@ final class AccountsEndpointsTest extends TestCase
         $this->assertSame([], $this->stub->inviteCalls());
     }
 
-    public function testUsernameTakenVomAnmeldedienstGibt409UndLegtNichtsAn(): void
+    public function testVergebenerAnmeldenameVomAnmeldedienstGibt409UndLegtNichtsAn(): void
     {
         $this->asAdmin();
         $this->stub->script('invite', ['status' => 409, 'body' => ['error' => 'taken', 'code' => 'username_taken']]);
@@ -265,7 +265,7 @@ final class AccountsEndpointsTest extends TestCase
         $this->assertSame([], $this->app->auditLog());
     }
 
-    public function testUngueltigerAnmeldenameVomAnmeldedienstGibt400InvalidUsername(): void
+    public function testUngueltigerAnmeldenameVomAnmeldedienstGibt400MitCode(): void
     {
         $this->asAdmin();
         $this->stub->script('invite', ['status' => 400, 'body' => ['error' => 'bad', 'code' => 'invalid_username']]);
@@ -276,10 +276,99 @@ final class AccountsEndpointsTest extends TestCase
         $this->assertCount(1, $this->app->accounts());
     }
 
+    /** @return array<string,array{array,int,string}> fachliche 4xx des Anmeldedienstes: Skript, erwarteter Status, Code */
+    public static function fachlicheAblehnungen(): array
+    {
+        return [
+            'Konto gesperrt' => [['status' => 409, 'body' => ['error' => 'Account is disabled.', 'code' => 'account_disabled']], 409, 'account_disabled'],
+            'Anmeldename ohne Schalter' => [['status' => 400, 'body' => ['error' => 'needs switch', 'code' => 'username_login_disabled']], 400, 'username_login_disabled'],
+            'unbekannter Code' => [['status' => 422, 'body' => ['error' => 'x', 'code' => 'etwas_neues']], 422, 'etwas_neues'],
+            '400 ohne Code' => [['status' => 400, 'body' => ['error' => 'Webhook processing failed.']], 400, 'invalid_request'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('fachlicheAblehnungen')]
+    public function testFachlicheAblehnungDesAnmeldedienstesWirdMitStatusUndCodeDurchgereicht(array $scripted, int $status, string $code): void
+    {
+        $this->asAdmin();
+        $this->stub->script('invite', $scripted);
+
+        $r = $this->invite(['email' => 'neu@schule.test']);
+
+        $this->assertSame([$status, $code], [$r['status'], $r['json']['code']]);
+        $this->assertArrayHasKey('error', $r['json']);
+        $this->assertCount(1, $this->app->accounts());
+        $this->assertSame([], $this->app->auditLog());
+    }
+
+    public function testAnmeldedienstKenntDasKontoAlsAktivAberLokalGibtEsKeinsDannWirdEsAlsEingeladenAngelegt(): void
+    {
+        $this->asAdmin();
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => false, 'already_active' => true]]);
+
+        $r = $this->invite(['email' => 'neu@schule.test']);
+
+        $this->assertSame(201, $r['status'], $r['body']);
+        $this->assertSame(self::OTHER, $r['json']['account']['id']);
+        $this->assertSame('invited', $r['json']['account']['status']);
+        $this->assertSame('invited', array_column($this->app->accounts(), null, 'public_user_id')[self::OTHER]['status']);
+        $this->assertSame(['account.invited'], $this->auditActions());
+    }
+
+    public function testAblaufdatumDerEinladungWirdDurchgereichtUndNirgendsGespeichert(): void
+    {
+        $this->asAdmin();
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => true, 'already_active' => false, 'username' => 'schueler.eins', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS', 'expires_at' => '2026-11-20T12:34:56Z']]);
+
+        $r = $this->invite(['login_name' => 'schueler.eins']);
+
+        $this->assertSame('2026-11-20T12:34:56Z', $r['json']['invite_expires_at']);
+        $this->assertStringNotContainsString('2026-11-20T12:34', json_encode([$this->app->accounts(), $this->app->auditLog()]));
+    }
+
+    public function testOhneAblaufdatumDesAnmeldedienstesIstInviteExpiresAtNull(): void
+    {
+        $this->asAdmin();
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => true, 'already_active' => false]]);
+
+        $r = $this->invite(['email' => 'neu@schule.test']);
+
+        $this->assertArrayHasKey('invite_expires_at', $r['json']);
+        $this->assertNull($r['json']['invite_expires_at']);
+    }
+
+    public function testErneutEinladenReichtDasAblaufdatumDurch(): void
+    {
+        $this->asAdmin();
+        $this->app->createAccount(self::OTHER, 'invited', null, 'schueler.eins');
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => false, 'already_active' => false, 'invite_code' => 'WXYZ-2345-6789-ABCD', 'expires_at' => '2026-11-21T08:00:00Z']]);
+
+        $r = $this->call('POST', '/api/accounts/' . self::OTHER . '/reinvite');
+
+        $this->assertSame('2026-11-21T08:00:00Z', $r['json']['invite_expires_at']);
+    }
+
+    public function testEmailUndAnmeldenameWerdenKleingeschriebenAnDenAnmeldedienstGeschickt(): void
+    {
+        $this->asAdmin();
+
+        $this->invite(['email' => 'Neu@Schule.TEST', 'login_name' => 'Max.Muster']);
+
+        $body = $this->stub->inviteCalls()[0]['body'];
+        $this->assertSame(['neu@schule.test', 'max.muster'], [$body['email'], $body['username']]);
+    }
+
     /** @return array<string,array{array}> */
     public static function ausfaelle(): array
     {
-        return ['5xx' => [['status' => 500]], 'Timeout' => [['delay' => 1.0]], 'Müll' => [['status' => 200, 'body' => ['nix' => 1]]]];
+        return [
+            '5xx' => [['status' => 500]],
+            // Verzoegerung deutlich ueber dem API-Timeout (AuthStub::env: 0.5 s), damit der Abbruch sicher vor der Antwort kommt.
+            'Timeout' => [['delay' => 2.0]],
+            'Müll' => [['status' => 200, 'body' => ['nix' => 1]]],
+            'kein JSON' => [['status' => 200, 'raw' => '<html>Bad Gateway</html>']],
+            '4xx ohne Code' => [['status' => 401, 'body' => ['error' => 'Invalid webhook signature.']]],
+        ];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('ausfaelle')]
@@ -294,6 +383,7 @@ final class AccountsEndpointsTest extends TestCase
         $this->assertCount(1, $this->app->accounts());
         $this->assertSame([], $this->app->auditLog());
 
+        $this->stub->calls(); // php -S bedient nacheinander: wartet, bis die verzoegerte Antwort ausgeliefert ist
         $retry = $this->invite(['email' => 'neu@schule.test']);
         $this->assertSame(201, $retry['status']);
         $this->assertCount(2, $this->app->accounts());
