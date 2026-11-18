@@ -105,6 +105,14 @@ Kontodetail und Rollenvergabe (ADR 0002 B4, Nachtrag #11). Lesen mit **einem** d
 - Audit: `role.assigned` / `role.revoked`, Objekt = Konto, Akteur = Verwalter, Kontext `{role: <Schlüssel>, name: <Name>}`. `grantInitialAdmin` und `revokeAllRoles` berechnen `mfa_required` ebenfalls neu (`MfaRequirement::recomputeFor`: ODER über `role_settings.requires_mfa` aller Rollen; Rolle ohne Merkmale zählt als „erfordert MFA“).
 - Andockpunkte: P3 (#35) in `RoleAssignmentRules::refusal()` beim Entziehen (Kommentar im Code); Einzelrechte (#36) ergänzen `AccessAdministration` und füllen die schon vorhandenen Herkünfte `individual`/`withdrawn` der Lesesicht.
 
+## Letzter Schuladmin bleibt erhalten (Ticket #35)
+
+P3 (ADR 0002 B4, Nachtrag #11): Wer dem letzten Konto mit Status `active` die Rolle Schuladmin entzieht, erhält `409 last_admin`, auch bei sich selbst. Ein nur eingeladener oder deaktivierter zweiter Admin zählt nicht. Die Lesesicht (`role_actions`) sperrt „Entziehen“ dann mit `code: last_admin` und Begründung; die Web-Kontodetailansicht zeigt den Knopf deaktiviert.
+
+- Baustein: `AccessAdministration::ensureAdminRemains(array $leavingIds)` (wirft `last_admin`). Für spätere Aufrufer wie die Deaktivierung von Konten: in der Transaktion der Aktion als **erstes** aufrufen, mit den Konten, die als aktive Schuladmins ausscheiden würden. Konten ohne aktive Admin-Rolle ändern nichts und werden nie abgelehnt. Die Regel selbst steht in `LastAdminGuard`; `RoleAssignmentRules` nutzt sie für Ausführung (sperrend) und Lesesicht (nicht sperrend).
+- Sperrstrategie: Die Zeile der Rolle Schuladmin in `permission_roles` ist der Mutex über den Kreis der Admins (`SELECT … FOR UPDATE`), danach liest die Prüfung die aktiven Admins ebenfalls mit `FOR UPDATE` (neuester Stand, auch in laufender Transaktion). Reihenfolge immer: Rolle (Mutex), dann Zielkonto; `changeRole` sperrt deshalb die Rolle vor dem Konto, beim Vergeben wie beim Entziehen. Der Verlierer eines Rennens erhält `409 last_admin` oder, wenn der Gewinner ihm die Rolle schon genommen hat, `403 permission_not_held`.
+- Test der Nebenläufigkeit (`tests/Security/LastAdminTest.php`): zwei echte php-cgi-Prozesse gleichzeitig (`HttpTestApp::requestConcurrently`) gegen dieselbe Test-DB; ein Test-Trigger verzögert das Löschen der Rollenzuweisung um 1,5 s und macht das Fenster zwischen Prüfung und Commit groß. Ohne Sperre scheitert der Test reproduzierbar (beide Requests `200`, kein Admin übrig).
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)

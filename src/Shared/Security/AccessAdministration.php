@@ -75,6 +75,10 @@ final class AccessAdministration
     private function changeRole(Actor $actor, string $targetId, string $roleId, bool $assign): void
     {
         $this->atomically(function () use ($actor, $targetId, $roleId, $assign): void {
+            // Zuerst die Rolle sperren: fuer Schuladmin ist das der Mutex von P3 ({@see LastAdminGuard}). Die Reihenfolge
+            // Rolle, dann Zielkonto gilt fuer Vergeben und Entziehen, damit sich zwei Admins nicht gegenseitig verklemmen.
+            $roleLock = DB::getInstance()->prepare('SELECT `id` FROM `permission_roles` WHERE `id` = :id FOR UPDATE');
+            $roleLock->execute(['id' => $roleId]);
             // Sperre auf dem Zielkonto: gleichzeitige Aenderungen desselben Kontos laufen nacheinander.
             $lock = DB::getInstance()->prepare('SELECT `id` FROM `accounts` WHERE `public_user_id` = :id FOR UPDATE');
             $lock->execute(['id' => $targetId]);
@@ -84,7 +88,7 @@ final class AccessAdministration
             $roles = array_column((new RoleOverview())->list(), null, 'id');
             $role = $roles[$roleId] ?? throw new CodedException('role_not_found', 404, 'Die Rolle gibt es nicht.');
 
-            $refusal = (new RoleAssignmentRules($actor->accountId, $roles))->refusal($targetId, $role, $assign);
+            $refusal = (new RoleAssignmentRules($actor->accountId, $roles, lockAdmins: true))->refusal($targetId, $role, $assign);
             if ($refusal !== null) {
                 throw $refusal;
             }
@@ -108,6 +112,28 @@ final class AccessAdministration
                 $targetId,
                 ['role' => $role['key'], 'name' => $role['name']],
             );
+        });
+    }
+
+    /**
+     * P3 als eigene Operation (Ticket #35): stellt sicher, dass nach einer Aktion, die den Konten $leavingIds die Rolle
+     * Schuladmin oder den Status `active` nimmt, mindestens ein aktiver Schuladmin uebrig bleibt. Fuer die spaeter
+     * folgende Deaktivierung von Konten und jede weitere Aktion, die den Kreis der Admins verkleinern kann.
+     *
+     * Aufruf in der Transaktion der Aktion (sonst oeffnet sie eine eigene), als ERSTES, bevor das Zielkonto gesperrt wird:
+     * Sie sperrt zuerst die Rolle Schuladmin (Mutex), dann die aktiven Admin-Konten, und liest danach den neuesten Stand.
+     * Konten, die kein aktiver Schuladmin sind, aendern den Bestand nicht (nie eine Ablehnung).
+     *
+     * @param list<string> $leavingIds public_user_ids der Konten, die als aktive Schuladmins ausscheiden wuerden
+     * @throws CodedException `last_admin` (409)
+     */
+    public function ensureAdminRemains(array $leavingIds): void
+    {
+        $this->atomically(function () use ($leavingIds): void {
+            $refusal = (new LastAdminGuard())->refusal($leavingIds, true);
+            if ($refusal !== null) {
+                throw $refusal;
+            }
         });
     }
 

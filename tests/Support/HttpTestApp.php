@@ -33,27 +33,47 @@ final class HttpTestApp
     /** @return array{status:int, body:string, json:?array} */
     public function request(string $method, string $uri, array $env = [], ?array $json = null): array
     {
+        return $this->requestConcurrently([[$method, $uri, $env, $json]])[0];
+    }
+
+    /**
+     * Startet alle Requests gleichzeitig (je ein eigener php-cgi-Prozess) und wartet auf alle Antworten.
+     * Fuer Nebenlaeufigkeitstests; die Antworten kommen in der Reihenfolge der Aufrufe.
+     *
+     * @param list<array{0:string,1:string,2?:array<string,string>,3?:?array}> $calls je [Methode, URI, Umgebung, JSON]
+     * @return list<array{status:int, body:string, json:?array}>
+     */
+    public function requestConcurrently(array $calls): array
+    {
         $cgi = getenv('TEST_PHP_CGI') ?: dirname(PHP_BINARY) . DIRECTORY_SEPARATOR . (PHP_OS_FAMILY === 'Windows' ? 'php-cgi.exe' : 'php-cgi');
-        $body = $json === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
-        $env = array_merge($this->env(), [
-            'REQUEST_METHOD' => $method,
-            'REQUEST_URI' => $uri,
-            'SCRIPT_FILENAME' => $this->root . '/public/index.php',
-            'REDIRECT_STATUS' => '200',
-            'GATEWAY_INTERFACE' => 'CGI/1.1',
-            'SERVER_PROTOCOL' => 'HTTP/1.1',
-        ], $body === '' ? [] : [
-            'CONTENT_TYPE' => 'application/json',
-            'CONTENT_LENGTH' => (string) strlen($body),
-        ], $env);
-        [$code, $out] = $this->run([$cgi, '-q'], $env, $body);
-        [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
-        $status = 200;
-        if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
-            $status = (int) $m[1];
+        $running = [];
+        foreach ($calls as $i => [$method, $uri, $env, $json]) {
+            $body = ($json ?? null) === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
+            $env = array_merge($this->env(), [
+                'REQUEST_METHOD' => $method,
+                'REQUEST_URI' => $uri,
+                'SCRIPT_FILENAME' => $this->root . '/public/index.php',
+                'REDIRECT_STATUS' => '200',
+                'GATEWAY_INTERFACE' => 'CGI/1.1',
+                'SERVER_PROTOCOL' => 'HTTP/1.1',
+            ], $body === '' ? [] : [
+                'CONTENT_TYPE' => 'application/json',
+                'CONTENT_LENGTH' => (string) strlen($body),
+            ], $env ?? []);
+            $running[$i] = $this->start([$cgi, '-q'], $env, $body);
         }
-        $json = json_decode($body, true);
-        return ['status' => $status, 'body' => $body, 'json' => is_array($json) ? $json : null];
+        $responses = [];
+        foreach ($running as $i => $process) {
+            [, $out] = $this->finish($process);
+            [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
+            $status = 200;
+            if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
+                $status = (int) $m[1];
+            }
+            $json = json_decode($body, true);
+            $responses[$i] = ['status' => $status, 'body' => $body, 'json' => is_array($json) ? $json : null];
+        }
+        return $responses;
     }
 
     public function migrate(): void
@@ -175,10 +195,26 @@ final class HttpTestApp
     /** @return array{int,string} */
     private function run(array $cmd, array $env, string $stdin = ''): array
     {
+        return $this->finish($this->start($cmd, $env, $stdin));
+    }
+
+    /** @return array{resource, array<int,resource>} */
+    private function start(array $cmd, array $env, string $stdin): array
+    {
         $full = array_merge(getenv(), $env);
         $p = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->root, $full);
         fwrite($pipes[0], $stdin);
         fclose($pipes[0]);
+        return [$p, $pipes];
+    }
+
+    /**
+     * @param array{resource, array<int,resource>} $process
+     * @return array{int,string}
+     */
+    private function finish(array $process): array
+    {
+        [$p, $pipes] = $process;
         $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
         return [proc_close($p), $out];
     }
