@@ -21,6 +21,9 @@ final class AuditLog
     public const ROLE_CREATED = 'role.created';
     public const ROLE_ASSIGNED = 'role.assigned';
     public const ROLE_REVOKED = 'role.revoked';
+    public const PERMISSION_GRANTED = 'permission.granted';
+    public const PERMISSION_WITHDRAWN = 'permission.withdrawn';
+    public const PERMISSION_OVERRIDE_CLEARED = 'permission.override_cleared';
 
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
