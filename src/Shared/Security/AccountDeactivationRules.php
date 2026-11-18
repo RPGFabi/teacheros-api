@@ -36,24 +36,12 @@ final class AccountDeactivationRules
         if ($this->actor->isSelf($target->publicUserId)) {
             return new CodedException('self_deactivation', 409, 'Sie können sich nicht selbst deaktivieren.');
         }
-        if ($this->actor->isBoundByP2() && !$this->actorHoldsAllOf($target)) {
+        if ($this->actor->isBoundByP2() && !$this->actor->holdsAllRightsOf($target->publicUserId)) {
             return new CodedException('permission_not_held', 403, 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht deaktivieren.');
         }
         if (!$target->isActive()) {
             return new CodedException('account_not_active', 409, 'Nur aktive Konten lassen sich deaktivieren.');
         }
         return (new LastAdminGuard())->refusal([$target->publicUserId], $this->lockAdmins);
-    }
-
-    /**
-     * Besitzt der Akteur (ohne Wildcard) alle effektiven Rechte des Ziels? Ein Wildcard-Konto hat den ganzen Katalog
-     * und mehr; ohne Wildcard besitzt man das nie, daher deaktivieren nur Schuladmins Schuladmins.
-     */
-    private function actorHoldsAllOf(Account $target): bool
-    {
-        if (PermissionCatalog::service()->forUser($target->publicUserId)->hasWildcard) {
-            return false;
-        }
-        return $this->actor->canAll(PermissionCatalog::effectiveFor($target->publicUserId));
     }
 }

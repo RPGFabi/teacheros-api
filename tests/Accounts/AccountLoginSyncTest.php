@@ -75,7 +75,7 @@ final class AccountLoginSyncTest extends TestCase
 
         $this->assertFalse($r['json']['account']['login_sync_pending']);
         $this->assertSame(0, (int) $this->row(self::TARGET)['login_sync_pending']);
-        $this->assertSame(['deactivate'], array_column($r['json']['account_actions'], 'action'));
+        $this->assertSame(['deactivate', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
     }
 
     // ---- Ausfall des Anmeldedienstes: lokale Sperre bleibt, "Abgleich offen" --------------------
@@ -156,7 +156,7 @@ final class AccountLoginSyncTest extends TestCase
         $this->assertSame(200, $r['status']);
         $this->assertFalse($r['json']['account']['login_sync_pending']);
         $this->assertSame(0, (int) $this->row(self::TARGET)['login_sync_pending']);
-        $this->assertSame(['deactivate'], array_column($r['json']['account_actions'], 'action'));
+        $this->assertSame(['deactivate', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
         $calls = $this->stub->disableLoginCalls();
         $this->assertCount(2, $calls);
         $this->assertSame(['event' => 'user.self_deleted', 'public_user_id' => self::TARGET, 'reason' => 'admin_locked'], $calls[1]['body']);

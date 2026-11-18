@@ -16,7 +16,7 @@ declare(strict_types=1);
  * nacheinander, daher genuegt eine einfache Datei.
  *
  * Steuerung (nur fuer Tests):
- *   POST /__stub/script  {"invite"|"delete"|"disable-login":[{"status":500,"body":{...},"delay":1.5,"raw":"kein JSON"}]}  haengt Antworten an; je Aufruf wird eine verbraucht
+ *   POST /__stub/script  {"invite"|"delete"|"disable-login"|"enable-login":[{"status":500,"body":{...},"delay":1.5,"raw":"kein JSON"}]}  haengt Antworten an; je Aufruf wird eine verbraucht
  *   GET  /__stub/calls   aufgezeichnete Aufrufe
  */
 
@@ -28,7 +28,7 @@ $maxAge = 300;
 $load = static function () use ($statePath): array {
     $raw = is_file($statePath) ? file_get_contents($statePath) : false;
     $state = $raw === false ? [] : (json_decode($raw, true) ?: []);
-    return $state + ['calls' => [], 'script' => ['invite' => [], 'delete' => [], 'disable-login' => []], 'invited' => [], 'nonces' => []];
+    return $state + ['calls' => [], 'script' => ['invite' => [], 'delete' => [], 'disable-login' => [], 'enable-login' => []], 'invited' => [], 'nonces' => []];
 };
 $save = static function (array $state) use ($statePath): void {
     file_put_contents($statePath, json_encode($state));
@@ -60,7 +60,7 @@ if ($path === '/__stub/calls') {
     $reply(200, ['calls' => $state['calls']]);
 }
 
-$routes = ['/internal/users/invite' => 'invite', '/internal/users/delete' => 'delete', '/internal/users/disable-login' => 'disable-login'];
+$routes = ['/internal/users/invite' => 'invite', '/internal/users/delete' => 'delete', '/internal/users/disable-login' => 'disable-login', '/internal/users/enable-login' => 'enable-login'];
 if ($method !== 'POST' || !isset($routes[$path])) {
     $reply(404, ['error' => 'Not found']);
 }
@@ -127,7 +127,7 @@ if ($kind === 'invite') {
 }
 
 $publicId = (string) ($payload['public_user_id'] ?? '');
-if ($kind === 'disable-login') { // wie der echte Dienst: idempotent 200 (Ereignis und Grund prueft erst ein Test an den Aufrufen)
+if ($kind === 'disable-login' || $kind === 'enable-login') { // wie der echte Dienst: idempotent 200 (Ereignis und Grund prueft erst ein Test an den Aufrufen)
     $save($state);
     $reply(200, ['ok' => true, 'public_user_id' => $publicId]);
 }

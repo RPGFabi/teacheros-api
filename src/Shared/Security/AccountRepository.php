@@ -108,6 +108,23 @@ final class AccountRepository
         return $stmt->rowCount() === 1;
     }
 
+    /**
+     * Reaktiviert ein deaktiviertes Konto: Status `active`, Grund, `inactive_since` und die Markierung "Abgleich offen" entfallen.
+     * `sessions_valid_after` bleibt, alte Tokens bleiben ungueltig (ADR 0002 B2). Der Aufrufer prueft Regeln, hat den
+     * Anmeldedienst unterrichtet und sperrt in seiner Transaktion.
+     *
+     * @return bool true nur, wenn dieser Aufruf den Wechsel vollzogen hat
+     */
+    public function reactivate(string $publicUserId): bool
+    {
+        $stmt = DB::getInstance()->prepare(
+            'UPDATE `accounts` SET `status` = :active, `inactive_reason` = NULL, `inactive_since` = NULL, `login_sync_pending` = 0
+             WHERE `public_user_id` = :id AND `status` = :inactive'
+        );
+        $stmt->execute(['id' => $publicUserId, 'active' => AccountStatus::Active->value, 'inactive' => AccountStatus::Inactive->value]);
+        return $stmt->rowCount() === 1;
+    }
+
     /** Leert die Markierung "Abgleich offen" eines deaktivierten Kontos (der Anmeldedienst ist unterrichtet). */
     public function markLoginSynced(string $publicUserId): void
     {

@@ -45,6 +45,19 @@ final class ActorPermissions
         return true;
     }
 
+    /**
+     * Besitzt der Akteur alle effektiven Rechte des Kontos (P2 fuer Aktionen am Konto selbst, ohne Wildcard des Akteurs)?
+     * Ein Wildcard-Konto hat den ganzen Katalog und mehr; ohne Wildcard besitzt man das nie, daher wirken nur
+     * Schuladmins auf Schuladmins.
+     */
+    public function holdsAllRightsOf(string $accountId): bool
+    {
+        if (PermissionCatalog::service()->forUser($accountId)->hasWildcard) {
+            return false;
+        }
+        return $this->canAll(PermissionCatalog::effectiveFor($accountId));
+    }
+
     public function isSelf(string $accountId): bool
     {
         return $this->actorId === $accountId;

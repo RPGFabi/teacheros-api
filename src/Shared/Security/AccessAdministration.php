@@ -7,6 +7,7 @@ namespace TeacherOS\Shared\Security;
 use Hoelzle\Core\Database\DB;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
+use TeacherOS\Shared\AuthService\AuthServiceClient;
 use TeacherOS\Shared\Exceptions\CodedException;
 
 /**
@@ -226,6 +227,34 @@ final class AccessAdministration
 
             (new AccountRepository())->deactivate($targetId, InactiveReason::AdminLocked);
             $this->audit->record($actor, AuditLog::ACCOUNT_DEACTIVATED, 'account', $targetId, ['reason' => InactiveReason::AdminLocked->value]);
+        });
+    }
+
+    /**
+     * Reaktiviert ein deaktiviertes Konto (Ticket #43, ADR 0002 B2 und Nachtrag #12): umgekehrte Reihenfolge zur Deaktivierung.
+     * Zuerst gibt `enable-login` den Login im Anmeldedienst frei (synchron), erst bei Erfolg wird das Konto lokal `active`
+     * (Grund, `inactive_since` und "Abgleich offen" entfallen, `sessions_valid_after` bleibt) und `account.reactivated` geschrieben.
+     * Lehnt der Dienst ab oder ist er nicht erreichbar, aendert sich lokal nichts. Regeln: {@see AccountReactivationRules}.
+     *
+     * Eine Transaktion mit gesperrter Kontozeile, wie beim Abgleich ({@see \TeacherOS\Modules\Accounts\AccountLoginSync}):
+     * ein gleichzeitiger "Abgleich wiederholen" wartet und findet dann ein aktives Konto.
+     *
+     * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403); `self_reactivation`,
+     *                        `account_not_inactive` (409); der Anmeldedienst lehnt fachlich ab: z. B. `self_deleted`,
+     *                        `email_unconfirmed` (409); nicht erreichbar: `auth_unavailable` (502)
+     */
+    public function reactivateAccount(Actor $actor, string $targetId, AuthServiceClient $authService = new AuthServiceClient()): void
+    {
+        $this->atomically(function () use ($actor, $targetId, $authService): void {
+            $this->lockAccount($targetId);
+            $target = (new AccountRepository())->findByPublicUserId($targetId) ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+
+            $this->throwIfRefused((new AccountReactivationRules($actor->accountId))->refusal($target));
+
+            $authService->enableLogin($targetId);
+
+            (new AccountRepository())->reactivate($targetId);
+            $this->audit->record($actor, AuditLog::ACCOUNT_REACTIVATED, 'account', $targetId, []);
         });
     }
 

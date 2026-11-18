@@ -91,7 +91,7 @@ final class AuthStub
         ];
     }
 
-    /** Haengt die naechste Antwort fuer `invite`, `delete` oder `disable-login` an ({status, body, delay}); je Aufruf wird eine verbraucht. */
+    /** Haengt die naechste Antwort fuer `invite`, `delete`, `disable-login` oder `enable-login` an ({status, body, delay}); je Aufruf wird eine verbraucht. */
     public function script(string $endpoint, array $response): void
     {
         $ctx = stream_context_create(['http' => [
@@ -118,6 +118,12 @@ final class AuthStub
     public function disableLoginCalls(): array
     {
         return $this->callsTo('/internal/users/disable-login');
+    }
+
+    /** @return list<array{path:string, body:?array, signature_valid:bool, content_type:string}> */
+    public function enableLoginCalls(): array
+    {
+        return $this->callsTo('/internal/users/enable-login');
     }
 
     /** @return list<array{path:string, body:?array, signature_valid:bool, content_type:string}> */

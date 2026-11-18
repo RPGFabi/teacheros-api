@@ -88,7 +88,8 @@ final class AccountAccessView
     /**
      * Die Aktionen am Konto selbst fuer den Betrachter (Ticket #41): `deactivate`, mit `allowed`, bei Sperre
      * `code` und `reason` aus {@see AccountDeactivationRules}; dazu `resync_login` ("Abgleich wiederholen", Ticket #42),
-     * nur solange der Abgleich offen ist, erlaubt mit `accounts.deactivate`. Ticket #43 ergaenzt `reactivate`.
+     * nur solange der Abgleich offen ist, erlaubt mit `accounts.deactivate`; `reactivate` (Ticket #43) nur bei deaktivierten
+     * Konten, mit `allowed`, bei Sperre `code` und `reason` aus {@see AccountReactivationRules}.
      *
      * @return list<array{action:string,allowed:bool,code:?string,reason:?string}>
      */
@@ -99,6 +100,10 @@ final class AccountAccessView
         if (!$account->isActive() && $account->loginSyncPending) {
             $allowed = (new ActorPermissions($viewerId))->can(PermissionCatalog::ACCOUNTS_DEACTIVATE);
             $actions[] = ['action' => 'resync_login', 'allowed' => $allowed, 'code' => $allowed ? null : 'forbidden', 'reason' => $allowed ? null : 'Dafür fehlt Ihnen das Recht, Konten zu deaktivieren.'];
+        }
+        if ($account->status === AccountStatus::Inactive) {
+            $refusal = (new AccountReactivationRules($viewerId))->refusal($account);
+            $actions[] = ['action' => 'reactivate', 'allowed' => $refusal === null, 'code' => $refusal?->errorCode, 'reason' => $refusal?->getMessage()];
         }
         return $actions;
     }

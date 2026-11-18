@@ -75,6 +75,15 @@ final class AccountAccessController
     }
 
     /**
+     * Konto reaktivieren (Ticket #43): zuerst `enable-login`, dann lokal `active`. Fehler: fachliche Ablehnungen des Anmeldedienstes
+     * (409 `self_deleted`, `email_unconfirmed`), 502 `auth_unavailable`; dann ist lokal nichts geaendert. Antwort: die aktuelle Lesesicht.
+     */
+    public static function reactivate(Request $request, Response $response): void
+    {
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->reactivateAccount($actor, $accountId));
+    }
+
+    /**
      * "Abgleich wiederholen" (Ticket #42): ruft `disable-login` erneut auf. Kein Audit-Eintrag. Fehler: 409 `sync_not_pending`,
      * 502 `auth_unavailable` (die Markierung bleibt). Antwort: die aktuelle Lesesicht.
      */
