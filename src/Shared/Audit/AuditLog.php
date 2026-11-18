@@ -18,6 +18,7 @@ final class AuditLog
     /** Eine nie angenommene Einladung wurde ersetzt; das Konto (Objekt) ist gelöscht. */
     public const ACCOUNT_INVITATION_WITHDRAWN = 'account.invitation_withdrawn';
     public const ACCOUNT_ACTIVATED = 'account.activated';
+    public const ROLE_CREATED = 'role.created';
     public const ROLE_ASSIGNED = 'role.assigned';
     public const ROLE_REVOKED = 'role.revoked';
 

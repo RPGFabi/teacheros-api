@@ -12,6 +12,7 @@ use Hoelzle\Core\Http\CorsHandler;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountsController;
+use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 use TeacherOS\Shared\Security\PermissionCatalog;
 use TeacherOS\Shared\Security\RequirePermission;
@@ -51,6 +52,10 @@ final class AppBootstrap
         $router->get('/api/accounts', [AccountsController::class, 'index'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
         $router->post('/api/accounts/invitations', [AccountsController::class, 'invite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
         $router->post('/api/accounts/:id/reinvite', [AccountsController::class, 'reinvite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
+
+        $reader = [...$authenticated, RequirePermission::forAny(PermissionCatalog::ADMINISTRATION)];
+        $router->get('/api/permissions', [RolesController::class, 'permissions'], $reader);
+        $router->get('/api/roles', [RolesController::class, 'index'], $reader);
     }
 
     public static function me(Request $request, Response $response): void

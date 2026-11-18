@@ -74,6 +74,20 @@ Schuladmins (Recht `accounts.view` bzw. `accounts.invite`, nicht die Rolle) verw
 - Einladen ohne E-Mail (Ticket #28): `{"login_name": "schueler.eins"}` legt ein Konto ohne E-Mail an. Erneut einladen eines Kontos ohne E-Mail liefert einen neuen Code und macht den vorigen ungültig. `invite_expires_at` (ISO 8601, UTC) nennt, bis wann die Einladung gilt; die API reicht es vom Anmeldedienst durch, ohne es zu speichern (`null`, wenn er keins nennt). Die Einladungskarte zeigt es als „gültig bis“.
 - Die Web-Seite zeigt den Code auf einer druckbaren Einladungskarte (10 × 3 cm, QR-Code auf `<Web-Origin>/einladung?code=…`, A4-Raster 2 × 9 über `@media print`). E2E: `tests/e2e/first-admin-invite.sh` spielt auch den Durchlauf per Anmeldename und Code durch (CLI und API, Anmeldedienst mit G6).
 
+## Rollen im Web (Ticket #32)
+
+Lesender Teil der Rollenverwaltung (ADR 0002 B4, Nachtrag #11). Beide Endpunkte brauchen ein gültiges Token und **eines** der drei Verwaltungsrechte `roles.manage`, `roles.assign` oder `permissions.assign` (ein `roles.view` gibt es nicht); sonst `403 {"code": "forbidden"}`.
+
+| Endpunkt | Antwort |
+|---|---|
+| `GET /api/permissions` | `200 {"permissions": [{key, name, group}]}`: der Rechte-Katalog mit deutschem Namen und Gruppe, in Anzeigereihenfolge |
+| `GET /api/roles` | `200 {"roles": [{id, key, name, description, permissions, all_permissions, requires_mfa, protection, account_count}]}` |
+
+- `protection` (Tabelle `role_settings`, Enum `RoleProtection`): `wildcard` (Schuladmin, alle Rechte), `protected` (Schüler/in, Rechte fest aus dem Code), `standard` (übrige Standardrollen: Rechte änderbar, nicht löschbar), `custom` (selbst angelegt). `requires_mfa` ist bei Standardrollen fest.
+- Wildcard-Rollen liefern `all_permissions: true` und in `permissions` den aufgelösten Katalog; `*` verlässt die API nie. `account_count` ist die Zahl der Konten mit der Rolle. Reihenfolge: Standardrollen fest (Schuladmin, Schüler/in, Lehrkraft, Erziehungsberechtigte/r, Sekretariat, Schulleitung), danach eigene Rollen nach Name.
+- Das Setup (`setup/migrate/0008_standard_roles.php`, `StandardRoles::ensureAll`) legt die sechs Standardrollen idempotent an; die letzten vier starten ohne Rechte, bestehende Rollen bleiben unverändert. Nur beim tatsächlichen Anlegen entsteht ein Audit-Eintrag `role.created` (Akteur `cli`, Objekt = Rolle, Kontext Schlüssel und Name).
+- Rechte-Katalog: `PermissionCatalog::entries()` (Schlüssel, Name, Gruppe); neue Rechte gehören dort hinein. Der Web-Navigationspunkt „Rollen“ erscheint nur mit einem der drei Rechte (aus `GET /api/me`).
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)
