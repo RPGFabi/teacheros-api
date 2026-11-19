@@ -25,6 +25,12 @@ final class AuditLog
     public const ROLE_UPDATED = 'role.updated';
     public const ROLE_DELETED = 'role.deleted';
 
+    /** Ein aktives Konto wurde von der Verwaltung deaktiviert (Ticket #41); Kontext: reason. */
+    public const ACCOUNT_DEACTIVATED = 'account.deactivated';
+
+    /** Ein deaktiviertes Konto wurde von der Verwaltung reaktiviert (Ticket #43). */
+    public const ACCOUNT_REACTIVATED = 'account.reactivated';
+
     public const PERMISSION_GRANTED = 'permission.granted';
     public const PERMISSION_WITHDRAWN = 'permission.withdrawn';
     public const PERMISSION_OVERRIDE_CLEARED = 'permission.override_cleared';

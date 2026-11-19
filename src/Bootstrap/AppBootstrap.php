@@ -59,8 +59,8 @@ final class AppBootstrap
         $router->get('/api/roles', [RolesController::class, 'index'], $reader);
 
         // Rollen an Konten (Ticket #34): Lesesicht der Zuweisungen, Vergeben und Entziehen einzeln.
-        // Kontodetail: zusaetzlich accounts.view (ADR 0002 B4: Konten sehen, wer das Recht dazu hat).
-        $router->get('/api/accounts/:id/access', [AccountAccessController::class, 'show'], [...$reader, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
+        // Kontodetail: accounts.view und eines der drei Verwaltungsrechte oder accounts.deactivate (ADR 0002 B4, Review #12).
+        $router->get('/api/accounts/:id/access', [AccountAccessController::class, 'show'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW), RequirePermission::forAny(PermissionCatalog::ACCOUNT_DETAIL_READERS)]);
         $assigner = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_ASSIGN)];
         $router->post('/api/accounts/:id/roles', [AccountAccessController::class, 'assign'], $assigner);
         $router->post('/api/accounts/:id/roles/:roleId/revoke', [AccountAccessController::class, 'revoke'], $assigner);
@@ -70,6 +70,13 @@ final class AppBootstrap
         $router->post('/api/roles', [RolesController::class, 'create'], $manager);
         $router->post('/api/roles/:id/update', [RolesController::class, 'update'], $manager);
         $router->post('/api/roles/:id/delete', [RolesController::class, 'delete'], $manager);
+
+        // Konto deaktivieren (Ticket #41) und den Abgleich mit dem Anmeldedienst wiederholen (Ticket #42). Reaktivieren (Ticket #43).
+        // Die Antworten sind die Lesesicht des Kontos: darum zusaetzlich accounts.view (Review #12).
+        $deactivator = [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_DEACTIVATE), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)];
+        $router->post('/api/accounts/:id/deactivate', [AccountAccessController::class, 'deactivate'], $deactivator);
+        $router->post('/api/accounts/:id/resync-login', [AccountAccessController::class, 'resyncLogin'], $deactivator);
+        $router->post('/api/accounts/:id/reactivate', [AccountAccessController::class, 'reactivate'], $deactivator);
 
         // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.
         $permissionAssigner = [...$authenticated, RequirePermission::for(PermissionCatalog::PERMISSIONS_ASSIGN)];

@@ -19,12 +19,19 @@ final class PermissionCatalog
     public const ROLES_MANAGE = 'roles.manage';
     public const ROLES_ASSIGN = 'roles.assign';
     public const PERMISSIONS_ASSIGN = 'permissions.assign';
+    public const ACCOUNTS_DEACTIVATE = 'accounts.deactivate';
 
     /**
      * Die drei Verwaltungsrechte (ADR 0002 B4). Wer eines hat, darf Rollen, Rechte-Katalog und
      * Zuweisungen lesen; ein eigenes `roles.view` gibt es nicht.
      */
     public const ADMINISTRATION = [self::ROLES_MANAGE, self::ROLES_ASSIGN, self::PERMISSIONS_ASSIGN];
+
+    /**
+     * Wer ein Kontodetail lesen darf, zusaetzlich zu `accounts.view` (ADR 0002 B4, Review #12): eines der drei
+     * Verwaltungsrechte oder `accounts.deactivate` (der Verwalter der Deaktivierung braucht die Lesesicht).
+     */
+    public const ACCOUNT_DETAIL_READERS = [...self::ADMINISTRATION, self::ACCOUNTS_DEACTIVATE];
 
     private const GROUP_ACCOUNTS = 'Konten';
     private const GROUP_ROLES = 'Rollen und Rechte';
@@ -39,6 +46,7 @@ final class PermissionCatalog
         return [
             ['key' => self::ACCOUNTS_VIEW, 'name' => 'Konten ansehen', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ACCOUNTS_INVITE, 'name' => 'Konten einladen', 'group' => self::GROUP_ACCOUNTS],
+            ['key' => self::ACCOUNTS_DEACTIVATE, 'name' => 'Konten deaktivieren und reaktivieren', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ROLES_MANAGE, 'name' => 'Rollen verwalten', 'group' => self::GROUP_ROLES],
             ['key' => self::ROLES_ASSIGN, 'name' => 'Rollen vergeben und entziehen', 'group' => self::GROUP_ROLES],
             ['key' => self::PERMISSIONS_ASSIGN, 'name' => 'Einzelrechte vergeben und entziehen', 'group' => self::GROUP_ROLES],

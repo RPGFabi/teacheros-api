@@ -77,6 +77,37 @@ final class AuthServiceClient
     }
 
     /**
+     * Sperrt den Login eines Kontos im Anmeldedienst (G4a, idempotent) und widerruft dessen Refresh-Tokens.
+     * `$reason` ist ein Sperrgrund des Dienstes (`admin_locked`, `left_school`, `security_lock`); das Ereignis heisst
+     * unveraendert `user.self_deleted` (der Grund steht in `reason`).
+     *
+     * @throws AuthServiceUnavailableException
+     * @throws CodedException wie bei {@see invite()}, z. B. `user_not_found` (404)
+     */
+    public function disableLogin(string $publicUserId, string $reason): void
+    {
+        [$status, $json] = $this->post('/internal/users/disable-login', ['event' => 'user.self_deleted', 'public_user_id' => $publicUserId, 'reason' => $reason]);
+        if ($status !== 200 || ($json['ok'] ?? false) !== true) { // 200 ohne lesbares {"ok": true} gilt nicht als Erfolg
+            throw $this->failure($status, $json, 'das Sperren des Logins');
+        }
+    }
+
+    /**
+     * Gibt den Login eines Kontos im Anmeldedienst wieder frei (G4b, idempotent). Sitzungen kommen dadurch nicht zurueck.
+     *
+     * @throws AuthServiceUnavailableException
+     * @throws CodedException wie bei {@see invite()}: fachliche Ablehnungen mit Status und Code, z. B. `self_deleted` (409),
+     *                        `email_unconfirmed` (409), `user_not_found` (404)
+     */
+    public function enableLogin(string $publicUserId): void
+    {
+        [$status, $json] = $this->post('/internal/users/enable-login', ['event' => 'user.enable_login', 'public_user_id' => $publicUserId]);
+        if ($status !== 200 || ($json['ok'] ?? false) !== true) { // 200 ohne lesbares {"ok": true} gilt nicht als Erfolg
+            throw $this->failure($status, $json, 'das Freigeben des Logins');
+        }
+    }
+
+    /**
      * Uebersetzt eine nicht erfolgreiche Antwort: fachliche 4xx (mit `code`, bei 400 mit lesbarer Antwort auch ohne: `invalid_request`)
      * gehen mit ihrem Status und Code an den Aufrufer; alles andere (5xx, Fehlkonfiguration wie ein falsches
      * Secret, unlesbare Antwort) ist "Anmeldedienst nicht verfuegbar".

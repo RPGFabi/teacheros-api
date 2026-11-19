@@ -76,7 +76,7 @@ final class AccountsEndpointsTest extends TestCase
         $this->assertSame(200, $r['status']);
         $byId = array_column($r['json']['accounts'], null, 'id');
         $this->assertSame(
-            ['id' => self::ADMIN, 'email' => 'admin@schule.test', 'login_name' => 'admin@schule.test', 'status' => 'active', 'invited_at' => null],
+            ['id' => self::ADMIN, 'email' => 'admin@schule.test', 'login_name' => 'admin@schule.test', 'status' => 'active', 'invited_at' => null, 'inactive_since' => null, 'login_sync_pending' => false],
             $byId[self::ADMIN],
         );
         $this->assertSame('invited', $byId[self::OTHER]['status']);

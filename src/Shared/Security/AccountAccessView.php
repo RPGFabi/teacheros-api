@@ -29,6 +29,25 @@ final class AccountAccessView
     {
         $account = $this->accounts->findByPublicUserId($accountId)
             ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+        $view = ['account' => $this->accountData($account, $viewerId)];
+        if ($this->mayAdministerAccess($viewerId)) {
+            $view += $this->accessSections($accountId, $viewerId);
+        }
+        return $view + ['account_actions' => $this->accountActions($account, $viewerId)];
+    }
+
+    /**
+     * Rollen und Rechte zeigt die Lesesicht nur, wer eines der drei Verwaltungsrechte hat (oder der Betreiber): wer nur
+     * Konten deaktiviert (Review #12), sieht das Konto und die Kontoaktionen.
+     */
+    private function mayAdministerAccess(?string $viewerId): bool
+    {
+        return $viewerId === null || PermissionCatalog::service()->canAny($viewerId, PermissionCatalog::ADMINISTRATION);
+    }
+
+    /** @return array<string,mixed> `roles`, `permissions`, `role_actions`, `permission_actions` */
+    private function accessSections(string $accountId, ?string $viewerId): array
+    {
         $access = PermissionCatalog::service()->getUserAccess($accountId);
         $roles = (new RoleOverview())->byId();
         $held = array_flip($access['role_ids']);
@@ -54,7 +73,6 @@ final class AccountAccessView
         }
 
         return [
-            'account' => $this->accountData($account, $viewerId),
             'roles' => $assigned,
             'permissions' => $this->permissions($accountId, $roles, $access),
             'role_actions' => $actions,
@@ -72,9 +90,43 @@ final class AccountAccessView
     {
         $data = ['id' => $account->publicUserId];
         if ($viewerId === null || PermissionCatalog::service()->canAny($viewerId, [PermissionCatalog::ACCOUNTS_VIEW])) {
-            $data += ['email' => $account->email, 'login_name' => $account->loginName, 'status' => $account->status->value];
+            $data += [
+                'email' => $account->email,
+                'login_name' => $account->loginName,
+                'status' => $account->status->value,
+                'inactive_since' => $account->inactiveSince === null ? null : gmdate('c', $account->inactiveSince),
+                'inactive_reason' => $account->inactiveReason?->value,
+                'login_sync_pending' => $account->loginSyncPending,
+                'login_sync_error' => $account->loginSyncError,
+            ];
         }
         return $data + ['mfa_required' => $account->mfaRequired];
+    }
+
+    /**
+     * Die Aktionen am Konto selbst fuer den Betrachter ({@see AccountAction}), je mit `allowed`, bei Sperre `code` und
+     * `reason` aus den Regeln: `deactivate` (Ticket #41, {@see AccountDeactivationRules}); `resync_login` ("Abgleich wiederholen",
+     * Ticket #42) nur solange der Abgleich offen ist, erlaubt mit `accounts.deactivate`; `reactivate` (Ticket #43,
+     * {@see AccountReactivationRules}) nur bei deaktivierten Konten.
+     *
+     * @return list<array{action:string,allowed:bool,code:?string,reason:?string}>
+     */
+    private function accountActions(Account $account, ?string $viewerId): array
+    {
+        $actions = [$this->accountAction(AccountAction::Deactivate, (new AccountDeactivationRules($viewerId))->refusal($account))];
+        if ($account->awaitsLoginSync()) {
+            $actions[] = $this->accountAction(AccountAction::ResyncLogin, (new AccountActionRules($viewerId, AccountAction::ResyncLogin))->rightRefusal());
+        }
+        if ($account->status === AccountStatus::Inactive) {
+            $actions[] = $this->accountAction(AccountAction::Reactivate, (new AccountReactivationRules($viewerId))->refusal($account));
+        }
+        return $actions;
+    }
+
+    /** @return array{action:string,allowed:bool,code:?string,reason:?string} */
+    private function accountAction(AccountAction $action, ?CodedException $refusal): array
+    {
+        return ['action' => $action->value, 'allowed' => $refusal === null, 'code' => $refusal?->errorCode, 'reason' => $refusal?->getMessage()];
     }
 
     /**
