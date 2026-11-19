@@ -9,7 +9,8 @@ use TeacherOS\Modules\SchoolYears\SchoolYearStatus;
 
 /**
  * Status der Schuljahre (Ticket #54): wird aus dem heutigen Datum abgeleitet und nie gespeichert.
- * laufend = heute im Zeitraum (beide Grenzen inklusive) oder heute in einer Luecke und das naechste kommende Schuljahr.
+ * laufend = heute im Zeitraum (beide Grenzen inklusive) oder heute in einer Luecke ZWISCHEN zwei Schuljahren und das
+ * naechste kommende Schuljahr. Vor dem ersten Schuljahr ist keines laufend, das erste ist dann kommend.
  */
 final class SchoolYearStatusTest extends TestCase
 {
@@ -60,9 +61,15 @@ final class SchoolYearStatusTest extends TestCase
         $this->assertSame(['past', 'past'], $this->statuses('2027-08-01', [self::Y2526, self::Y2627]));
     }
 
-    public function testVorDemErstenSchuljahrIstDasErsteLaufendDieRestlichenKommend(): void
+    public function testVorDemErstenSchuljahrIstKeinesLaufendAlleKommend(): void
     {
-        $this->assertSame(['running', 'upcoming'], $this->statuses('2025-01-01', [self::Y2526, self::Y2627]));
+        $this->assertSame(['upcoming', 'upcoming'], $this->statuses('2025-01-01', [self::Y2526, self::Y2627]));
+        $this->assertSame(['upcoming'], $this->statuses('2025-08-31', [self::Y2526]), 'auch am Tag vor dem Beginn');
+    }
+
+    public function testErsterTagDesErstenSchuljahresIstLaufend(): void
+    {
+        $this->assertSame(['running', 'upcoming'], $this->statuses('2025-09-01', [self::Y2526, self::Y2627]));
     }
 
     public function testHoechstensEinSchuljahrIstLaufend(): void

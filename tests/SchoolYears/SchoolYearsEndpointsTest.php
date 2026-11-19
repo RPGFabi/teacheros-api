@@ -150,7 +150,7 @@ final class SchoolYearsEndpointsTest extends TestCase
         $this->assertSame('2090/91', $year['name']);
         $this->assertSame('2090-09-14', $year['starts_on']);
         $this->assertSame('2091-07-29', $year['ends_on']);
-        $this->assertSame('running', $year['status'], 'heute liegt in einer Luecke davor: das naechste kommende Schuljahr laeuft');
+        $this->assertSame('upcoming', $year['status'], 'heute liegt vor dem ersten Schuljahr: keines laeuft, das erste ist kommend');
         $this->assertCount(1, $this->app->schoolYears());
     }
 
@@ -291,6 +291,16 @@ final class SchoolYearsEndpointsTest extends TestCase
         $byName = array_column($this->list(self::VIEWER)['json']['school_years'], 'status', 'name');
 
         $this->assertSame(['2000/01' => 'past', '2090/91' => 'running', '2091/92' => 'upcoming'], $byName);
+    }
+
+    public function testVorDemErstenSchuljahrIstKeinesLaufend(): void
+    {
+        $this->createYear('2090-09-01', '2091-07-31');
+        $this->createYear('2091-09-01', '2092-07-31');
+
+        $byName = array_column($this->list(self::VIEWER)['json']['school_years'], 'status', 'name');
+
+        $this->assertSame(['2090/91' => 'upcoming', '2091/92' => 'upcoming'], $byName);
     }
 
     // --- Migration ---

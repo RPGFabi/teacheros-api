@@ -16,8 +16,9 @@ enum SchoolYearStatus: string
 
     /**
      * Status je Zeitraum zum Stichtag. Laufend ist das Schuljahr, in das der Tag faellt (Grenzen inklusive), sonst, wenn
-     * der Tag in einer Luecke oder vor dem ersten Schuljahr liegt, das naechste kommende. Hoechstens eines ist laufend,
-     * weil sich Schuljahre nie ueberschneiden.
+     * der Tag in einer Luecke ZWISCHEN zwei Schuljahren liegt, das naechste kommende. Vor dem ersten Schuljahr ist keines
+     * laufend, das erste ist dann kommend; nach dem letzten ist alles vergangen. Hoechstens eines ist laufend, weil sich
+     * Schuljahre nie ueberschneiden.
      *
      * @param list<array{0:string,1:string}> $periods Zeitraeume als [Beginn, Ende] (`JJJJ-MM-TT`), aufsteigend nach Beginn
      * @return list<self> in der Reihenfolge der Zeitraeume
@@ -32,16 +33,20 @@ enum SchoolYearStatus: string
             }
         }
         $containsToday = false;
+        $anyEnded = false;
         foreach ($periods as [$start, $end]) {
             $containsToday = $containsToday || ($start <= $day && $day <= $end);
+            $anyEnded = $anyEnded || $end < $day;
         }
+        // In einer Luecke zwischen zwei Schuljahren: eines liegt davor (vergangen), das naechste dahinter.
+        $inGap = !$containsToday && $anyEnded;
 
         $statuses = [];
         foreach ($periods as $i => [$start, $end]) {
             $statuses[] = match (true) {
                 $start <= $day && $day <= $end => self::Running,
                 $end < $day => self::Past,
-                $i === $nextUpcoming && !$containsToday => self::Running,
+                $i === $nextUpcoming && $inGap => self::Running,
                 default => self::Upcoming,
             };
         }

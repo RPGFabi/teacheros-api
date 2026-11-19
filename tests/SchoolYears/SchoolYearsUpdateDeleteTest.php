@@ -86,7 +86,7 @@ final class SchoolYearsUpdateDeleteTest extends TestCase
         $this->assertSame('2091/92', $year['name']);
         $this->assertSame('2091-09-01', $year['starts_on']);
         $this->assertSame('2092-07-31', $year['ends_on']);
-        $this->assertSame('running', $year['status']);
+        $this->assertSame('upcoming', $year['status']);
         $rows = $this->app->schoolYears();
         $this->assertCount(1, $rows);
         $this->assertSame('2091-09-01', $rows[0]['starts_on']);
