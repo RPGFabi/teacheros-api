@@ -40,6 +40,9 @@ final class AuditLog
     /** Die Freigabe eines Moduls wurde zurueckgenommen (Ticket #13); Objekt: Modul-ID, Kontext: valid_from (UTC). */
     public const MODULE_DISABLED = 'module.disabled';
 
+    /** Ein Schuljahr wurde angelegt (Ticket #54); Objekt: Kennung des Schuljahres, Kontext: name (Bezeichnung). */
+    public const SCHOOL_YEAR_CREATED = 'school_year.created';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {

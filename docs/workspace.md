@@ -207,6 +207,23 @@ Ein Verwalter mit `accounts.deactivate` deaktiviert ein **aktives** Konto (Gloss
 - Die Lesesicht (GET und die Antworten der Schreibwege) enthält `roles`, `permissions`, `role_actions` und `permission_actions` nur, wenn der Akteur mindestens eines der drei Verwaltungsrechte hat (oder der Betreiber ist); sonst nur `account` und `account_actions`. Die Web-Detailansicht blendet die Abschnitte Rollen, Effektive Rechte und Einzelrechte dann aus.
 - Tests: `tests/Accounts/AccountDeactivationTest.php` (Abschnitt „Rechte der Lesesicht und der Schreibwege“).
 
+## Schuljahre (Ticket #54)
+
+Erstes Stammdaten-Ticket (Spec #17; Glossar: Schuljahr). Führt die Rechtegruppe „Stammdaten“ ein: `school_years.view` („Schuljahre ansehen“) und `school_years.manage` („Schuljahre verwalten“). Die Standardrollen haben sie nicht voreingestellt, Schuladmin hat sie über die Wildcard. Die Routen gehören zu `core` und laufen über `ModuleGate::route()` (Anmeldung, Modulprüfung, dann Recht); `manage` schließt `view` nicht ein.
+
+| Endpunkt | Recht | Body | Antwort |
+|---|---|---|---|
+| `GET /api/school-years` | `school_years.view` | – | `200 {"school_years": [{id, name, starts_on, ends_on, status}]}`, nach Beginn aufsteigend |
+| `POST /api/school-years` | `school_years.manage` | `{starts_on, ends_on}` (`JJJJ-MM-TT`, beide Tage inklusive) | `201 {"school_year": {…}}` (Zeile wie in der Liste) |
+
+- **Bezeichnung** wird aus dem Zeitraum erzeugt (`SchoolYearPeriod::name()`): Jahr des Beginns, Schrägstrich, letzte zwei Ziffern des Endjahres (14.09.2026 bis 29.07.2027 ergibt „2026/27“). Ein mitgeschicktes `name` wird ignoriert.
+- **Status** (`running`, `upcoming`, `past`) wird bei jeder Abfrage aus dem heutigen Datum (Europa/Berlin) abgeleitet (`SchoolYearStatus::derive`), nie gespeichert. Laufend ist das Schuljahr, das heute enthält, sonst (heute in einer Lücke oder vor dem ersten Schuljahr) das nächste kommende; höchstens eines läuft.
+- **Fehler:** `400 invalid_request` (kein echter Kalendertag im Format `JJJJ-MM-TT`), `422 invalid_period` (Ende nicht im Kalenderjahr nach dem Beginn), `409 school_year_overlap` (Überschneidung, auch bei nur einem gemeinsamen Tag; Lücken sind erlaubt), `503 school_years_busy` (Sperre nicht binnen 10 s frei), `403 forbidden`, `401`.
+- **Speicherung:** Tabelle `school_years` (Migration 0013: `id` UUID als stabile Kennung, `starts_on`, `ends_on`). Prüfung auf Überschneidung, Insert und Audit laufen unter der benannten MySQL-Sperre `teacheros.school_years` in einer Transaktion (zwei gleichzeitige Anfragen setzen sich nicht beide durch).
+- **Audit:** `school_year.created` (Objekt `school_year`, Objekt-ID = Kennung, Kontext `name`).
+- Code: `src/Modules/SchoolYears/` (`SchoolYearRoutes`, `SchoolYearsController`, `SchoolYears`, `SchoolYearRepository`, `SchoolYearPeriod`, `SchoolYearStatus`). Tests: `tests/SchoolYears/`; die echten Routen hängt `tests/Support/module-probe-routes.php` zusätzlich unter das nicht freigegebene Modul `observe`, um „Modulprüfung vor Rechteprüfung“ zu beweisen.
+- Web: Seite „Schuljahre“ (`src/school-years/`, Menüpunkt `#/schuljahre` nur mit `school_years.view`, Formular nur mit `school_years.manage`), Liste mit Status-Badge, Vorschau der Bezeichnung, auf dem Smartphone als Karten.
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)

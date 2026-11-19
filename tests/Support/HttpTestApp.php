@@ -132,6 +132,18 @@ final class HttpTestApp
         $this->pdo()->exec('DELETE FROM `audit_log`');
     }
 
+    /** Entfernt alle Schuljahre (Testaufbau). */
+    public function resetSchoolYears(): void
+    {
+        $this->pdo()->exec('DELETE FROM `school_years`');
+    }
+
+    /** @return list<array<string,mixed>> nach Beginn */
+    public function schoolYears(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `school_years` ORDER BY `starts_on`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     /** Entfernt alle Modulfreigaben (Testaufbau): danach ist nur `core` aktiv. */
     public function resetModules(): void
     {

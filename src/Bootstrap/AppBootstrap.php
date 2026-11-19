@@ -14,6 +14,7 @@ use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
 use TeacherOS\Modules\Roles\RolesController;
+use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Shared\Modules\ModuleEntitlements;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 use TeacherOS\Shared\Security\PermissionCatalog;
@@ -87,6 +88,9 @@ final class AppBootstrap
 
         // Alle bisherigen Routen gehoeren zu `core` (immer aktiv). Routen eines Fachmoduls bauen ihre Middleware mit
         // ModuleGate::route(): Anmeldung, dann Modulfreigabe, dann Rechte (ADR 0002 B5, Ticket #13).
+        // Schuljahre (Ticket #54): erste Routen der Stammdaten, ebenfalls `core`.
+        SchoolYearRoutes::register($router);
+
         self::registerTestRoutes($router);
     }
 
