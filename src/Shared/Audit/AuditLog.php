@@ -49,19 +49,19 @@ final class AuditLog
     /** Ein Schuljahr wurde geloescht (Ticket #56); Objekt: Kennung, Kontext: name (Bezeichnung). */
     public const SCHOOL_YEAR_DELETED = 'school_year.deleted';
 
-    /** Eine Klasse wurde angelegt (Ticket #55); Objekt: Kennung der Klasse, Kontext: name, grade_level, school_year_id. */
+    /** Eine Klasse wurde angelegt (Ticket #55); Objekt: Kennung der Klasse, Kontext: name (Bezeichnung). */
     public const CLASS_CREATED = 'class.created';
 
-    /** Klassenstufe oder Bezeichnung einer Klasse geaendert (Ticket #57); Kontext: name, grade_level, school_year_id, previous_name, previous_grade_level. */
+    /** Klassenstufe oder Bezeichnung einer Klasse geaendert (Ticket #57); Objekt: Kennung, Kontext: old_name (alte Bezeichnung), name (neue Bezeichnung); Klassenstufe und Schuljahr gehoeren nicht in den Kontext. */
     public const CLASS_UPDATED = 'class.updated';
 
-    /** Eine Klasse wurde archiviert (Ticket #57); Kontext: name, grade_level, school_year_id. */
+    /** Eine Klasse wurde archiviert (Ticket #57); Objekt: Kennung, Kontext: name. */
     public const CLASS_ARCHIVED = 'class.archived';
 
-    /** Eine archivierte Klasse wurde wiederhergestellt (Ticket #57); Kontext: name, grade_level, school_year_id. */
+    /** Eine archivierte Klasse wurde wiederhergestellt (Ticket #57); Objekt: Kennung, Kontext: name. */
     public const CLASS_RESTORED = 'class.restored';
 
-    /** Eine unverknuepfte Klasse wurde endgueltig geloescht (Ticket #57); Kontext: name, grade_level, school_year_id. */
+    /** Eine unverknuepfte Klasse wurde endgueltig geloescht (Ticket #57); Objekt: Kennung, Kontext: name. */
     public const CLASS_DELETED = 'class.deleted';
 
     /** @param array<string,scalar>|null $context */

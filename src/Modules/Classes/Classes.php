@@ -87,11 +87,7 @@ final class Classes
         $id = Uuid::v4();
         $this->inTransaction(function () use ($id, $input, $actor): void {
             $this->repository->insert($id, $input);
-            $this->audit->record($actor, AuditLog::CLASS_CREATED, 'class', $id, [
-                'name' => $input->change->name,
-                'grade_level' => $input->change->gradeLevel,
-                'school_year_id' => $input->schoolYearId,
-            ]);
+            $this->audit->record($actor, AuditLog::CLASS_CREATED, 'class', $id, ['name' => $input->change->name]);
         });
         return self::present(['id' => $id, 'grade_level' => $input->change->gradeLevel, 'name' => $input->change->name, 'archived' => false], $year);
     }
@@ -115,13 +111,7 @@ final class Classes
                 throw new CodedException('class_archived', 409, 'Die Klasse ist archiviert und kann nicht geändert werden. Bitte zuerst wiederherstellen.');
             }
             $this->repository->update($id, $change);
-            $this->audit->record($actor, AuditLog::CLASS_UPDATED, 'class', $id, [
-                'name' => $change->name,
-                'grade_level' => $change->gradeLevel,
-                'school_year_id' => $before['school_year_id'],
-                'previous_name' => $before['name'],
-                'previous_grade_level' => $before['grade_level'],
-            ]);
+            $this->audit->record($actor, AuditLog::CLASS_UPDATED, 'class', $id, ['old_name' => $before['name'], 'name' => $change->name]);
         });
         return self::present(['id' => $id, 'grade_level' => $change->gradeLevel, 'name' => $change->name, 'archived' => false], $this->schoolYear($before['school_year_id']));
     }
@@ -165,7 +155,7 @@ final class Classes
                 throw new CodedException('class_linked', 409, 'Die Klasse ist verknüpft (' . implode(', ', $links) . ') und kann nicht gelöscht werden. Bitte stattdessen archivieren.');
             }
             $this->repository->delete($id);
-            $this->audit->record($actor, AuditLog::CLASS_DELETED, 'class', $id, self::context($class));
+            $this->audit->record($actor, AuditLog::CLASS_DELETED, 'class', $id, ['name' => $class['name']]);
         });
     }
 
@@ -183,7 +173,7 @@ final class Classes
                     : new CodedException('class_not_archived', 409, 'Die Klasse ist nicht archiviert.');
             }
             $this->repository->setArchived($id, $archived);
-            $this->audit->record($actor, $archived ? AuditLog::CLASS_ARCHIVED : AuditLog::CLASS_RESTORED, 'class', $id, self::context($class));
+            $this->audit->record($actor, $archived ? AuditLog::CLASS_ARCHIVED : AuditLog::CLASS_RESTORED, 'class', $id, ['name' => $class['name']]);
         });
         return self::present([...$class, 'archived' => $archived], $this->schoolYear($class['school_year_id']));
     }
@@ -235,15 +225,6 @@ final class Classes
             throw new CodedException('school_year_not_found', 404, 'Das Schuljahr gibt es nicht.');
         }
         return ['id' => $year['id'], 'name' => $year['name']];
-    }
-
-    /**
-     * @param array{school_year_id:string,grade_level:int,name:string} $class
-     * @return array{name:string,grade_level:int,school_year_id:string}
-     */
-    private static function context(array $class): array
-    {
-        return ['name' => $class['name'], 'grade_level' => $class['grade_level'], 'school_year_id' => $class['school_year_id']];
     }
 
     /**

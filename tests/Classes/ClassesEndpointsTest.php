@@ -215,7 +215,7 @@ final class ClassesEndpointsTest extends TestCase
         $this->assertSame(201, $this->createClass(8, '7a', $other)['status'], 'im Folgejahr ist 7a eine neue Klasse');
     }
 
-    public function testAnlegenSchreibtAuditEintragMitKennungBezeichnungUndSchuljahr(): void
+    public function testAnlegenSchreibtAuditEintragNurMitKennungUndBezeichnung(): void
     {
         $id = $this->createClass(7, '7a')['json']['class']['id'];
 
@@ -225,7 +225,7 @@ final class ClassesEndpointsTest extends TestCase
         $this->assertSame($id, $entries[0]['object_id']);
         $this->assertSame('account', $entries[0]['actor_type']);
         $this->assertSame(self::ADMIN, $entries[0]['actor_account_id']);
-        $this->assertSame(['name' => '7a', 'grade_level' => 7, 'school_year_id' => $this->year], json_decode($entries[0]['context'], true));
+        $this->assertSame(['name' => '7a'], json_decode($entries[0]['context'], true));
     }
 
     /** @return iterable<string,array{array<string,mixed>}> */

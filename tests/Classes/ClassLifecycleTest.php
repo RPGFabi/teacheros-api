@@ -253,7 +253,7 @@ final class ClassLifecycleTest extends TestCase
         $this->assertSame('class_not_found', $r['json']['code']);
     }
 
-    public function testBearbeitenSchreibtAuditEintragMitAltemUndNeuemWert(): void
+    public function testBearbeitenSchreibtAuditEintragMitAlterUndNeuerBezeichnung(): void
     {
         $id = $this->createClass(7, '7a');
         $this->act($id, 'update', ['grade_level' => 8, 'name' => '8a']);
@@ -264,7 +264,7 @@ final class ClassLifecycleTest extends TestCase
         $this->assertSame($id, $entries[0]['object_id']);
         $this->assertSame(self::ADMIN, $entries[0]['actor_account_id']);
         $this->assertSame(
-            ['name' => '8a', 'grade_level' => 8, 'school_year_id' => $this->year, 'previous_name' => '7a', 'previous_grade_level' => 7],
+            ['old_name' => '7a', 'name' => '8a'],
             json_decode($entries[0]['context'], true),
         );
     }
@@ -417,7 +417,7 @@ final class ClassLifecycleTest extends TestCase
             $this->assertSame('class', $entries[0]['object_type']);
             $this->assertSame($id, $entries[0]['object_id']);
             $this->assertSame(self::ADMIN, $entries[0]['actor_account_id']);
-            $this->assertSame(['name' => '7a', 'grade_level' => 7, 'school_year_id' => $this->year], json_decode($entries[0]['context'], true));
+            $this->assertSame(['name' => '7a'], json_decode($entries[0]['context'], true));
         }
     }
 
@@ -495,7 +495,7 @@ final class ClassLifecycleTest extends TestCase
         $this->assertSame('class', $entries[0]['object_type']);
         $this->assertSame($id, $entries[0]['object_id']);
         $this->assertSame(self::ADMIN, $entries[0]['actor_account_id']);
-        $this->assertSame(['name' => '7a', 'grade_level' => 7, 'school_year_id' => $this->year], json_decode($entries[0]['context'], true));
+        $this->assertSame(['name' => '7a'], json_decode($entries[0]['context'], true));
     }
 
     public function testEineVerknuepfteKlasseWirdNichtGeloeschtUndAufArchivierenVerwiesen(): void
