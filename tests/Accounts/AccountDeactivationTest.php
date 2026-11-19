@@ -302,6 +302,82 @@ final class AccountDeactivationTest extends TestCase
         }
     }
 
+    // ---- Rechte der Lesesicht und der Schreibwege (Review #12, Q22/Q23) ---------------------------
+
+    /** Ein Konto nur mit den genannten Einzelrechten. */
+    private function holder(string $id, string ...$permissions): string
+    {
+        $this->app->createAccount($id, 'active');
+        foreach ($permissions as $permission) {
+            $this->app->grantPermission($id, $permission);
+        }
+        return $id;
+    }
+
+    private function detail(string $target, string $viewer): array
+    {
+        return $this->app->request('GET', "/api/accounts/$target/access", $this->bearer($viewer));
+    }
+
+    public function testKontodetailBrauchtAccountsViewUndEinesDerVierRechteAuchAccountsDeactivateGenuegt(): void
+    {
+        $this->app->createAccount(self::TARGET, 'active');
+        $viewAndDeactivate = $this->holder(self::MANAGER, 'accounts.view', 'accounts.deactivate');
+        $deactivateOnly = $this->holder('55555555-5555-4555-8555-555555555555', 'accounts.deactivate');
+
+        $this->assertSame(200, $this->detail(self::TARGET, $viewAndDeactivate)['status']);
+        $refused = $this->detail(self::TARGET, $deactivateOnly);
+        $this->assertSame([403, 'forbidden'], [$refused['status'], $refused['json']['code']]);
+    }
+
+    public function testDieSchreibwegeDeaktivierenReaktivierenUndAbgleichWiederholenBrauchenAuchAccountsView(): void
+    {
+        $this->admin();
+        $this->app->createAccount(self::TARGET, 'active');
+        $this->deactivate(self::TARGET);
+        $this->app->createAccount('77777777-7777-4777-8777-777777777777', 'active');
+        $deactivateOnly = $this->holder(self::MANAGER, 'accounts.deactivate');
+
+        foreach (['deactivate' => '77777777-7777-4777-8777-777777777777', 'reactivate' => self::TARGET, 'resync-login' => self::TARGET] as $action => $target) {
+            $r = $this->app->request('POST', "/api/accounts/$target/$action", $this->bearer($deactivateOnly));
+            $this->assertSame([403, 'forbidden'], [$r['status'], $r['json']['code']], $action);
+        }
+        $this->assertSame('active', $this->row('77777777-7777-4777-8777-777777777777')['status']);
+        $this->assertSame('inactive', $this->row(self::TARGET)['status']);
+        $this->assertCount(1, $this->app->auditLog(), 'nur die Deaktivierung des Testaufbaus');
+    }
+
+    public function testOhneEinRechteverwaltungsrechtEnthaeltDieLesesichtNurKontoUndKontoaktionen(): void
+    {
+        $this->app->createAccount(self::TARGET, 'active');
+        $manager = $this->holder(self::MANAGER, 'accounts.view', 'accounts.deactivate');
+        $withRoles = $this->holder('55555555-5555-4555-8555-555555555555', 'accounts.view', 'accounts.deactivate', 'permissions.assign');
+
+        $slim = $this->detail(self::TARGET, $manager)['json'];
+        $full = $this->detail(self::TARGET, $withRoles)['json'];
+
+        $this->assertSame(['account', 'account_actions'], array_keys($slim));
+        $this->assertSame(self::TARGET, $slim['account']['id']);
+        $this->assertSame('active', $slim['account']['status']);
+        foreach (['roles', 'permissions', 'role_actions', 'permission_actions'] as $section) {
+            $this->assertArrayHasKey($section, $full);
+        }
+    }
+
+    public function testDieAntwortDesDeaktivierensNenntDemVerwalterOhneRechteverwaltungDenOffenenAbgleich(): void
+    {
+        $this->app->createAccount(self::TARGET, 'active');
+        $manager = $this->holder(self::MANAGER, 'accounts.view', 'accounts.deactivate');
+
+        $r = $this->deactivate(self::TARGET, $manager); // kein Anmeldedienst konfiguriert: Abgleich offen
+
+        $this->assertSame(200, $r['status']);
+        $this->assertSame(['account', 'account_actions'], array_keys($r['json']));
+        $this->assertTrue($r['json']['account']['login_sync_pending']);
+        $this->assertSame('admin_locked', $r['json']['account']['inactive_reason']);
+        $this->assertContains('resync_login', array_column($r['json']['account_actions'], 'action'));
+    }
+
     public function testKontodetailNenntGrundUndZeitpunktDerDeaktivierung(): void
     {
         $this->admin();

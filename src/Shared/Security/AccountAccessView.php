@@ -29,6 +29,25 @@ final class AccountAccessView
     {
         $account = $this->accounts->findByPublicUserId($accountId)
             ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+        $view = ['account' => $this->accountData($account, $viewerId)];
+        if ($this->mayAdministerAccess($viewerId)) {
+            $view += $this->accessSections($accountId, $viewerId);
+        }
+        return $view + ['account_actions' => $this->accountActions($account, $viewerId)];
+    }
+
+    /**
+     * Rollen und Rechte zeigt die Lesesicht nur, wer eines der drei Verwaltungsrechte hat (oder der Betreiber): wer nur
+     * Konten deaktiviert (Review #12), sieht das Konto und die Kontoaktionen.
+     */
+    private function mayAdministerAccess(?string $viewerId): bool
+    {
+        return $viewerId === null || PermissionCatalog::service()->canAny($viewerId, PermissionCatalog::ADMINISTRATION);
+    }
+
+    /** @return array<string,mixed> `roles`, `permissions`, `role_actions`, `permission_actions` */
+    private function accessSections(string $accountId, ?string $viewerId): array
+    {
         $access = PermissionCatalog::service()->getUserAccess($accountId);
         $roles = (new RoleOverview())->byId();
         $held = array_flip($access['role_ids']);
@@ -54,12 +73,10 @@ final class AccountAccessView
         }
 
         return [
-            'account' => $this->accountData($account, $viewerId),
             'roles' => $assigned,
             'permissions' => $this->permissions($accountId, $roles, $access),
             'role_actions' => $actions,
             'permission_actions' => $this->permissionActions($accountId, $viewerId, $roles, $access),
-            'account_actions' => $this->accountActions($account, $viewerId),
         ];
     }
 

@@ -27,6 +27,12 @@ final class PermissionCatalog
      */
     public const ADMINISTRATION = [self::ROLES_MANAGE, self::ROLES_ASSIGN, self::PERMISSIONS_ASSIGN];
 
+    /**
+     * Wer ein Kontodetail lesen darf, zusaetzlich zu `accounts.view` (ADR 0002 B4, Review #12): eines der drei
+     * Verwaltungsrechte oder `accounts.deactivate` (der Verwalter der Deaktivierung braucht die Lesesicht).
+     */
+    public const ACCOUNT_DETAIL_READERS = [...self::ADMINISTRATION, self::ACCOUNTS_DEACTIVATE];
+
     private const GROUP_ACCOUNTS = 'Konten';
     private const GROUP_ROLES = 'Rollen und Rechte';
 
