@@ -10,6 +10,7 @@ final class Account
      * @param int|null $sessionsValidAfter Unix-Zeit: Tokens mit `iat` bis einschliesslich dieser Zeit sind widerrufen (ADR 0002 B2); null = keine Grenze
      * @param int|null $inactiveSince Unix-Zeit der Deaktivierung
      * @param bool $loginSyncPending "Abgleich offen": die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42)
+     * @param string|null $loginSyncError Code, mit dem der Anmeldedienst den Abgleich fachlich abgelehnt hat (z. B. `user_not_found`); null bei Nichterreichbarkeit oder ohne offenen Abgleich
      */
     public function __construct(
         public readonly string $publicUserId,
@@ -21,6 +22,7 @@ final class Account
         public readonly ?int $inactiveSince = null,
         public readonly ?string $inactiveReason = null,
         public readonly bool $loginSyncPending = false,
+        public readonly ?string $loginSyncError = null,
     ) {
     }
 

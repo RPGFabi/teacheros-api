@@ -234,6 +234,88 @@ final class AccountLoginSyncTest extends TestCase
         $this->assertSame([404, 'account_not_found'], $this->codeOf($this->resync('99999999-9999-4999-8999-999999999999')));
     }
 
+    // ---- Fachliche Ablehnung: der Code bleibt am Konto (Review #12, Q26) ------------------------
+
+    private function rejection(string $code = 'user_not_found', int $status = 404): array
+    {
+        return ['status' => $status, 'body' => ['error' => 'x', 'code' => $code]];
+    }
+
+    public function testEineFachlicheAblehnungBeimSpiegelnHaeltDenCodeFestUndNenntIhnInDerLesesicht(): void
+    {
+        $this->stub->script('disable-login', $this->rejection());
+
+        $r = $this->deactivate();
+
+        $this->assertSame(200, $r['status']);
+        $this->assertTrue($r['json']['account']['login_sync_pending']);
+        $this->assertSame('user_not_found', $r['json']['account']['login_sync_error']);
+        $this->assertSame('user_not_found', $this->row(self::TARGET)['login_sync_error']);
+        $detail = $this->as(self::ADMIN, 'GET', '/api/accounts/' . self::TARGET . '/access');
+        $this->assertSame('user_not_found', $detail['json']['account']['login_sync_error']);
+    }
+
+    public function testNichterreichbarkeitSetztKeinenCode(): void
+    {
+        $this->stub->script('disable-login', ['status' => 503, 'body' => []]);
+
+        $r = $this->deactivate();
+
+        $this->assertTrue($r['json']['account']['login_sync_pending']);
+        $this->assertNull($r['json']['account']['login_sync_error']);
+        $this->assertNull($this->row(self::TARGET)['login_sync_error']);
+    }
+
+    public function testAbgleichWiederholenAktualisiertDenGespeichertenCodeBeiAblehnung(): void
+    {
+        $this->stub->script('disable-login', $this->rejection());
+        $this->deactivate();
+        $this->stub->script('disable-login', $this->rejection('other_reason', 409));
+
+        $r = $this->resync();
+
+        $this->assertSame([409, 'other_reason'], $this->codeOf($r), 'die Ablehnung geht wie bisher mit Status und Code weiter');
+        $row = $this->row(self::TARGET);
+        $this->assertSame('other_reason', $row['login_sync_error']);
+        $this->assertSame(1, (int) $row['login_sync_pending']);
+        $detail = $this->as(self::ADMIN, 'GET', '/api/accounts/' . self::TARGET . '/access');
+        $this->assertSame('other_reason', $detail['json']['account']['login_sync_error']);
+    }
+
+    public function testErfolgreichesWiederholenLeertDenCode(): void
+    {
+        $this->stub->script('disable-login', $this->rejection());
+        $this->deactivate();
+
+        $r = $this->resync();
+
+        $this->assertSame(200, $r['status']);
+        $this->assertNull($r['json']['account']['login_sync_error']);
+        $this->assertNull($this->row(self::TARGET)['login_sync_error']);
+    }
+
+    public function testDieReaktivierungLeertDenCode(): void
+    {
+        $this->stub->script('disable-login', $this->rejection());
+        $this->deactivate();
+
+        $this->as(self::ADMIN, 'POST', '/api/accounts/' . self::TARGET . '/reactivate');
+
+        $row = $this->row(self::TARGET);
+        $this->assertSame('active', $row['status']);
+        $this->assertNull($row['login_sync_error']);
+    }
+
+    public function testDieMigration0011IstWiederholbarUndBehaeltDenCode(): void
+    {
+        $this->stub->script('disable-login', $this->rejection());
+        $this->deactivate();
+
+        $this->app->rerunMigrations('0011_account_login_sync_error.php');
+
+        $this->assertSame('user_not_found', $this->row(self::TARGET)['login_sync_error']);
+    }
+
     public function testDieMigrationIstWiederholbarUndBehaeltDieMarkierung(): void
     {
         $this->stub->script('disable-login', ['status' => 503, 'body' => []]);

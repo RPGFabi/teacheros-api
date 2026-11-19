@@ -9,7 +9,7 @@ use Hoelzle\Core\Database\DB;
 /** Liest Konten bei jedem Aufruf frisch aus der Datenbank (kein Cache, ADR 0002 B1). */
 final class AccountRepository
 {
-    private const COLUMNS = '`public_user_id`, `status`, `mfa_required`, `email`, `login_name`, `inactive_reason`, `login_sync_pending`,
+    private const COLUMNS = '`public_user_id`, `status`, `mfa_required`, `email`, `login_name`, `inactive_reason`, `login_sync_pending`, `login_sync_error`,
         UNIX_TIMESTAMP(`sessions_valid_after`) AS sessions_valid_after_ts, UNIX_TIMESTAMP(`inactive_since`) AS inactive_since_ts';
 
     public function findByPublicUserId(string $publicUserId): ?Account
@@ -118,18 +118,28 @@ final class AccountRepository
     public function reactivate(string $publicUserId): bool
     {
         $stmt = DB::getInstance()->prepare(
-            'UPDATE `accounts` SET `status` = :active, `inactive_reason` = NULL, `inactive_since` = NULL, `login_sync_pending` = 0
+            'UPDATE `accounts` SET `status` = :active, `inactive_reason` = NULL, `inactive_since` = NULL, `login_sync_pending` = 0, `login_sync_error` = NULL
              WHERE `public_user_id` = :id AND `status` = :inactive'
         );
         $stmt->execute(['id' => $publicUserId, 'active' => AccountStatus::Active->value, 'inactive' => AccountStatus::Inactive->value]);
         return $stmt->rowCount() === 1;
     }
 
-    /** Leert die Markierung "Abgleich offen" eines deaktivierten Kontos (der Anmeldedienst ist unterrichtet). */
+    /** Leert die Markierung "Abgleich offen" und den Ablehnungscode eines deaktivierten Kontos (der Anmeldedienst ist unterrichtet). */
     public function markLoginSynced(string $publicUserId): void
     {
-        DB::getInstance()->prepare('UPDATE `accounts` SET `login_sync_pending` = 0 WHERE `public_user_id` = :id')
+        DB::getInstance()->prepare('UPDATE `accounts` SET `login_sync_pending` = 0, `login_sync_error` = NULL WHERE `public_user_id` = :id')
             ->execute(['id' => $publicUserId]);
+    }
+
+    /**
+     * Haelt fest, mit welchem Code der Anmeldedienst den Abgleich fachlich abgelehnt hat; "Abgleich offen" bleibt bestehen.
+     * Wirkt nur, solange der Abgleich noch offen ist (eine gleichzeitige Reaktivierung bleibt unberuehrt).
+     */
+    public function markLoginSyncRejected(string $publicUserId, string $code): void
+    {
+        DB::getInstance()->prepare('UPDATE `accounts` SET `login_sync_error` = :code WHERE `public_user_id` = :id AND `status` = :inactive AND `login_sync_pending` = 1')
+            ->execute(['id' => $publicUserId, 'code' => $code, 'inactive' => AccountStatus::Inactive->value]);
     }
 
     public function delete(string $publicUserId): void
@@ -179,6 +189,7 @@ final class AccountRepository
                 $row['inactive_since_ts'] === null ? null : (int) $row['inactive_since_ts'],
                 $row['inactive_reason'],
                 (bool) $row['login_sync_pending'],
+                $row['login_sync_error'],
             );
     }
 }

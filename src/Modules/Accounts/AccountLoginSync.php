@@ -6,6 +6,7 @@ namespace TeacherOS\Modules\Accounts;
 
 use Hoelzle\Core\Database\DB;
 use TeacherOS\Shared\AuthService\AuthServiceClient;
+use TeacherOS\Shared\AuthService\AuthServiceUnavailableException;
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Security\AccountRepository;
 
@@ -54,6 +55,7 @@ final class AccountLoginSync
     {
         $pdo = DB::getInstance();
         $pdo->beginTransaction();
+        $calling = false;
         try {
             $lock = $pdo->prepare('SELECT `id` FROM `accounts` WHERE `public_user_id` = :id FOR UPDATE');
             $lock->execute(['id' => $accountId]);
@@ -65,11 +67,17 @@ final class AccountLoginSync
                 throw new CodedException('sync_not_pending', 409, 'Es ist kein Abgleich mit dem Anmeldedienst offen.');
             }
 
+            $calling = true;
             $this->authService->disableLogin($accountId, $account->inactiveReason);
+            $calling = false;
             $this->accounts->markLoginSynced($accountId);
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
+            if ($calling && $e instanceof CodedException && !$e instanceof AuthServiceUnavailableException) {
+                // Fachliche Ablehnung: "Abgleich offen" bleibt, der Code wird festgehalten (Review #12). Nichterreichbarkeit setzt keinen Code.
+                $this->accounts->markLoginSyncRejected($accountId, $e->errorCode);
+            }
             throw $e;
         }
     }

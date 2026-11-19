@@ -97,6 +97,7 @@ final class AccountAccessView
                 'inactive_since' => $account->inactiveSince === null ? null : gmdate('c', $account->inactiveSince),
                 'inactive_reason' => $account->inactiveReason,
                 'login_sync_pending' => $account->loginSyncPending,
+                'login_sync_error' => $account->loginSyncError,
             ];
         }
         return $data + ['mfa_required' => $account->mfaRequired];
