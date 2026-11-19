@@ -10,7 +10,7 @@ use TeacherOS\Shared\Exceptions\CodedException;
 /** Liest Konten bei jedem Aufruf frisch aus der Datenbank (kein Cache, ADR 0002 B1). */
 final class AccountRepository
 {
-    private const COLUMNS = '`public_user_id`, `status`, `mfa_required`, `email`, `login_name`, `inactive_reason`, `login_sync_pending`, `login_sync_error`,
+    private const COLUMNS = '`public_user_id`, `status`, `mfa_required`, `email`, `login_name`, `inactive_reason`,
         UNIX_TIMESTAMP(`sessions_valid_after`) AS sessions_valid_after_ts, UNIX_TIMESTAMP(`inactive_since`) AS inactive_since_ts';
 
     public function findByPublicUserId(string $publicUserId): ?Account
@@ -48,15 +48,19 @@ final class AccountRepository
      * Alle Konten fuer die Kontenliste, aelteste zuerst. `invited_at` als ISO-8601 (UTC) oder null.
      *
      * Deaktivierte Konten tragen zusaetzlich `inactive_since` (ISO-8601, UTC), sonst null, und `login_sync_pending`
-     * ("Abgleich offen", Ticket #42; nur bei deaktivierten Konten true).
+     * ("Abgleich offen" der Sperre, Ticket #42; nur bei deaktivierten Konten true).
      *
      * @return list<array{id:string,email:?string,login_name:string,status:string,invited_at:?string,inactive_since:?string,login_sync_pending:bool}>
      */
     public function listAll(): array
     {
-        $rows = DB::getInstance()->query(
-            'SELECT `public_user_id`, `email`, `login_name`, `status`, UNIX_TIMESTAMP(`invited_at`) AS invited_ts, UNIX_TIMESTAMP(`inactive_since`) AS inactive_ts, `login_sync_pending` FROM `accounts` ORDER BY `id`'
-        )->fetchAll();
+        $rows = DB::getInstance()->prepare(
+            'SELECT `public_user_id`, `email`, `login_name`, `status`, UNIX_TIMESTAMP(`invited_at`) AS invited_ts, UNIX_TIMESTAMP(`inactive_since`) AS inactive_ts,
+                EXISTS (SELECT 1 FROM `account_open_calls` c WHERE c.`account_id` = `accounts`.`public_user_id` AND c.`operation` = :disable_login) AS login_sync_pending
+             FROM `accounts` ORDER BY `id`'
+        );
+        $rows->execute(['disable_login' => DisableLoginCall::OPERATION]);
+        $rows = $rows->fetchAll();
         return array_map(static fn (array $r) => [
             'id' => $r['public_user_id'],
             'email' => $r['email'],
@@ -109,16 +113,16 @@ final class AccountRepository
     }
 
     /**
-     * Deaktiviert ein aktives Konto: Status, Grund, `inactive_since`, `sessions_valid_after` (ADR 0002 B2) und die
-     * Markierung "Abgleich offen" (Ticket #42) in einem Schritt. Der Aufrufer prueft Regeln und sperrt in seiner Transaktion.
+     * Deaktiviert ein aktives Konto: Status, Grund, `inactive_since` und `sessions_valid_after` (ADR 0002 B2) in einem
+     * Schritt. Den offenen Aufruf der Sperre ({@see self::addOpenCall()}) traegt der Aufrufer in derselben Transaktion
+     * ein; er prueft auch die Regeln und sperrt.
      *
      * @return bool true nur, wenn dieser Aufruf den Wechsel vollzogen hat
      */
     public function deactivate(string $publicUserId, InactiveReason $reason): bool
     {
         $stmt = DB::getInstance()->prepare(
-            'UPDATE `accounts` SET `status` = :inactive, `inactive_reason` = :reason, `inactive_since` = CURRENT_TIMESTAMP, `sessions_valid_after` = CURRENT_TIMESTAMP,
-                `login_sync_pending` = 1
+            'UPDATE `accounts` SET `status` = :inactive, `inactive_reason` = :reason, `inactive_since` = CURRENT_TIMESTAMP, `sessions_valid_after` = CURRENT_TIMESTAMP
              WHERE `public_user_id` = :id AND `status` = :active'
         );
         $stmt->execute(['id' => $publicUserId, 'inactive' => AccountStatus::Inactive->value, 'reason' => $reason->value, 'active' => AccountStatus::Active->value]);
@@ -126,7 +130,7 @@ final class AccountRepository
     }
 
     /**
-     * Reaktiviert ein deaktiviertes Konto: Status `active`, Grund, `inactive_since` und die Markierung "Abgleich offen" entfallen.
+     * Reaktiviert ein deaktiviertes Konto: Status `active`, Grund, `inactive_since` und der offene Aufruf der Sperre entfallen.
      * `sessions_valid_after` bleibt, alte Tokens bleiben ungueltig (ADR 0002 B2). Der Aufrufer prueft Regeln, hat den
      * Anmeldedienst unterrichtet und sperrt in seiner Transaktion.
      *
@@ -135,28 +139,48 @@ final class AccountRepository
     public function reactivate(string $publicUserId): bool
     {
         $stmt = DB::getInstance()->prepare(
-            'UPDATE `accounts` SET `status` = :active, `inactive_reason` = NULL, `inactive_since` = NULL, `login_sync_pending` = 0, `login_sync_error` = NULL
+            'UPDATE `accounts` SET `status` = :active, `inactive_reason` = NULL, `inactive_since` = NULL
              WHERE `public_user_id` = :id AND `status` = :inactive'
         );
         $stmt->execute(['id' => $publicUserId, 'active' => AccountStatus::Active->value, 'inactive' => AccountStatus::Inactive->value]);
-        return $stmt->rowCount() === 1;
-    }
-
-    /** Leert die Markierung "Abgleich offen" und den Ablehnungscode eines deaktivierten Kontos (der Anmeldedienst ist unterrichtet). */
-    public function markLoginSynced(string $publicUserId): void
-    {
-        DB::getInstance()->prepare('UPDATE `accounts` SET `login_sync_pending` = 0, `login_sync_error` = NULL WHERE `public_user_id` = :id')
-            ->execute(['id' => $publicUserId]);
+        $changed = $stmt->rowCount() === 1;
+        if ($changed) {
+            $this->removeOpenCall($publicUserId, DisableLoginCall::OPERATION);
+        }
+        return $changed;
     }
 
     /**
-     * Haelt fest, mit welchem Code der Anmeldedienst den Abgleich fachlich abgelehnt hat; "Abgleich offen" bleibt bestehen.
-     * Wirkt nur, solange der Abgleich noch offen ist (eine gleichzeitige Reaktivierung bleibt unberuehrt).
+     * Traegt einen offenen Aufruf ein ("Abgleich offen", Ticket #47); ein schon offener Aufruf bleibt einer, sein Code
+     * wird leer. Der Aufrufer sperrt das Konto und schreibt in derselben Transaktion die lokale Wirkung.
      */
-    public function markLoginSyncRejected(string $publicUserId, string $code): void
+    public function addOpenCall(string $publicUserId, string $operation): void
     {
-        DB::getInstance()->prepare('UPDATE `accounts` SET `login_sync_error` = :code WHERE `public_user_id` = :id AND `status` = :inactive AND `login_sync_pending` = 1')
-            ->execute(['id' => $publicUserId, 'code' => $code, 'inactive' => AccountStatus::Inactive->value]);
+        DB::getInstance()->prepare(
+            'INSERT INTO `account_open_calls` (`account_id`, `operation`) VALUES (:id, :operation) ON DUPLICATE KEY UPDATE `rejection_code` = NULL'
+        )->execute(['id' => $publicUserId, 'operation' => $operation]);
+    }
+
+    /** Nimmt einen offenen Aufruf aus der Menge (der Anmeldedienst ist unterrichtet oder der Aufruf ist hinfaellig). */
+    public function removeOpenCall(string $publicUserId, string $operation): void
+    {
+        DB::getInstance()->prepare('DELETE FROM `account_open_calls` WHERE `account_id` = :id AND `operation` = :operation')
+            ->execute(['id' => $publicUserId, 'operation' => $operation]);
+    }
+
+    /** Haelt fest, mit welchem Code der Anmeldedienst einen offenen Aufruf fachlich abgelehnt hat; der Aufruf bleibt offen. */
+    public function rejectOpenCall(string $publicUserId, string $operation, string $code): void
+    {
+        DB::getInstance()->prepare('UPDATE `account_open_calls` SET `rejection_code` = :code WHERE `account_id` = :id AND `operation` = :operation')
+            ->execute(['id' => $publicUserId, 'operation' => $operation, 'code' => $code]);
+    }
+
+    /** @return list<OpenCall> die offenen Aufrufe des Kontos, ungeordnet ({@see OpenCalls::ordered()}) */
+    private function openCallsOf(string $publicUserId): array
+    {
+        $stmt = DB::getInstance()->prepare('SELECT `operation`, `rejection_code` FROM `account_open_calls` WHERE `account_id` = :id ORDER BY `id`');
+        $stmt->execute(['id' => $publicUserId]);
+        return array_map(static fn (array $r) => new OpenCall($r['operation'], $r['rejection_code']), $stmt->fetchAll());
     }
 
     public function delete(string $publicUserId): void
@@ -205,8 +229,7 @@ final class AccountRepository
                 $row['sessions_valid_after_ts'] === null ? null : (int) $row['sessions_valid_after_ts'],
                 $row['inactive_since_ts'] === null ? null : (int) $row['inactive_since_ts'],
                 $row['inactive_reason'] === null ? null : InactiveReason::tryFrom($row['inactive_reason']),
-                (bool) $row['login_sync_pending'],
-                $row['login_sync_error'],
+                $this->openCallsOf($row['public_user_id']),
             );
     }
 }

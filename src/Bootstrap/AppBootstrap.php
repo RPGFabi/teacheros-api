@@ -77,7 +77,9 @@ final class AppBootstrap
         // Die Antworten sind die Lesesicht des Kontos: darum zusaetzlich accounts.view (Review #12).
         $deactivator = [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_DEACTIVATE), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)];
         $router->post('/api/accounts/:id/deactivate', [AccountAccessController::class, 'deactivate'], $deactivator);
-        $router->post('/api/accounts/:id/resync-login', [AccountAccessController::class, 'resyncLogin'], $deactivator);
+        // "Abgleich wiederholen" (Ticket #47): eines der Konto-Rechte genuegt, wie bei den Aufrufen, die es nachholt.
+        $resyncer = [...$authenticated, RequirePermission::forAny(PermissionCatalog::ACCOUNT_ACTION_RIGHTS), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)];
+        $router->post('/api/accounts/:id/resync-login', [AccountAccessController::class, 'resyncLogin'], $resyncer);
         $router->post('/api/accounts/:id/reactivate', [AccountAccessController::class, 'reactivate'], $deactivator);
 
         // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.

@@ -78,7 +78,7 @@ final class AccountReactivationTest extends TestCase
         $this->assertSame('active', $row['status']);
         $this->assertNull($row['inactive_reason']);
         $this->assertNull($row['inactive_since']);
-        $this->assertSame(0, (int) $row['login_sync_pending']);
+        $this->assertSame([], $this->app->openCalls(self::TARGET));
         $this->assertNotNull($row['sessions_valid_after'], 'die Sitzungsgrenze bleibt stehen');
     }
 
@@ -127,12 +127,12 @@ final class AccountReactivationTest extends TestCase
     {
         $this->stub->script('disable-login', ['status' => 503, 'body' => []]);
         $this->deactivate();
-        $this->assertSame(1, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame(['disable_login' => null], $this->app->openCalls(self::TARGET));
 
         $r = $this->reactivate();
 
         $this->assertSame(200, $r['status']);
-        $this->assertSame(0, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame([], $this->app->openCalls(self::TARGET));
         $this->assertSame(['deactivate'], array_column($r['json']['account_actions'], 'action'));
     }
 

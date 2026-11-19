@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace TeacherOS\Shared\Security;
 
 /**
- * Die Aktionen am Konto selbst (`account_actions` der Lesesicht, Tickets #41 bis #43). Alle verlangen das Recht
- * `accounts.deactivate`; die Texte der gemeinsamen Regeln ({@see AccountActionRules}) hangen am Verb.
+ * Die Aktionen am Konto selbst (`account_actions` der Lesesicht, Tickets #41 bis #43, #47). Alle verlangen das Recht
+ * `accounts.deactivate`, ausser "Abgleich wiederholen": das verlangt eines der Konto-Rechte
+ * ({@see PermissionCatalog::ACCOUNT_ACTION_RIGHTS}). Die Texte der gemeinsamen Regeln ({@see AccountActionRules}) hangen am Verb.
  */
 enum AccountAction: string
 {
     case Deactivate = 'deactivate';
     case Reactivate = 'reactivate';
-    /** "Abgleich wiederholen" (Ticket #42): braucht nur das Recht, keine weiteren Regeln. */
+    /** "Abgleich wiederholen" (Tickets #42, #47): holt alle offenen Aufrufe nach; braucht nur ein Konto-Recht, keine weiteren Regeln. */
     case ResyncLogin = 'resync_login';
 
     /** Verb in Meldungen: "Konten zu deaktivieren", "Sie dürfen es deshalb nicht deaktivieren". */

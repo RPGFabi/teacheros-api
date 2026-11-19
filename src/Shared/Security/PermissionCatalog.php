@@ -28,10 +28,17 @@ final class PermissionCatalog
     public const ADMINISTRATION = [self::ROLES_MANAGE, self::ROLES_ASSIGN, self::PERMISSIONS_ASSIGN];
 
     /**
-     * Wer ein Kontodetail lesen darf, zusaetzlich zu `accounts.view` (ADR 0002 B4, Review #12): eines der drei
-     * Verwaltungsrechte oder `accounts.deactivate` (der Verwalter der Deaktivierung braucht die Lesesicht).
+     * Die Rechte fuer Aktionen am Konto selbst, die lokal wirken und den Anmeldedienst unterrichten (ADR 0002 Nachtrag
+     * #16, Ticket #47). Wer eines hat (und `accounts.view`), darf "Abgleich wiederholen", der alle offenen Aufrufe eines
+     * Kontos nachholt. Widerruf (#48, `accounts.revoke_sessions`) und Zuruecksetzung (#49, `accounts.reset_mfa`) tragen ihr Recht hier ein.
      */
-    public const ACCOUNT_DETAIL_READERS = [...self::ADMINISTRATION, self::ACCOUNTS_DEACTIVATE];
+    public const ACCOUNT_ACTION_RIGHTS = [self::ACCOUNTS_DEACTIVATE];
+
+    /**
+     * Wer ein Kontodetail lesen darf, zusaetzlich zu `accounts.view` (ADR 0002 B4, Review #12): eines der drei
+     * Verwaltungsrechte oder ein Konto-Recht (der Verwalter der Deaktivierung braucht die Lesesicht).
+     */
+    public const ACCOUNT_DETAIL_READERS = [...self::ADMINISTRATION, ...self::ACCOUNT_ACTION_RIGHTS];
 
     private const GROUP_ACCOUNTS = 'Konten';
     private const GROUP_ROLES = 'Rollen und Rechte';

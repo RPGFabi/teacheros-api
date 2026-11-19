@@ -210,8 +210,8 @@ final class AccessAdministration
      *
      * Alles in einer Transaktion. Sperrreihenfolge wie bei P3 vorgegeben: zuerst der Mutex der Schuladmins
      * ({@see LastAdminGuard::lockMutex()}), dann das Zielkonto, dann die Admin-Zeilen (in der Regelpruefung).
-     * Erst nach dem lokalen Commit folgt der Abgleich mit dem Anmeldedienst ({@see AccountLoginSync}, `disable-login`,
-     * Ticket #42); scheitert er, bleibt die Deaktivierung bestehen (B2: erst lokal, dann Dienst) und das Konto traegt
+     * Erst nach dem lokalen Commit folgt der Abgleich mit dem Anmeldedienst ({@see OpenCalls}, `disable-login`,
+     * Tickets #42, #47); scheitert er, bleibt die Deaktivierung bestehen (B2: erst lokal, dann Dienst) und das Konto traegt
      * "Abgleich offen". Der Aufrufer darf deshalb keine eigene Transaktion offen haben.
      *
      * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403);
@@ -226,9 +226,10 @@ final class AccessAdministration
             $this->throwIfRefused((new AccountDeactivationRules($actor->accountId, lockAdmins: true))->refusal($target));
 
             (new AccountRepository())->deactivate($targetId, InactiveReason::AdminLocked);
+            (new AccountRepository())->addOpenCall($targetId, DisableLoginCall::OPERATION);
             $this->audit->record($actor, AuditLog::ACCOUNT_DEACTIVATED, 'account', $targetId, ['reason' => InactiveReason::AdminLocked->value]);
         });
-        (new AccountLoginSync($authService))->syncAfterDeactivation($targetId);
+        (new OpenCalls($authService))->attempt($targetId);
     }
 
     /**
@@ -237,7 +238,7 @@ final class AccessAdministration
      * (Grund, `inactive_since` und "Abgleich offen" entfallen, `sessions_valid_after` bleibt) und `account.reactivated` geschrieben.
      * Lehnt der Dienst ab oder ist er nicht erreichbar, aendert sich lokal nichts. Regeln: {@see AccountReactivationRules}.
      *
-     * Eine Transaktion mit gesperrter Kontozeile, wie beim Abgleich ({@see AccountLoginSync}):
+     * Eine Transaktion mit gesperrter Kontozeile, wie beim Abgleich ({@see OpenCalls}):
      * ein gleichzeitiger "Abgleich wiederholen" wartet und findet dann ein aktives Konto.
      *
      * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403); `self_reactivation`,

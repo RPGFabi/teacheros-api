@@ -74,7 +74,7 @@ final class AccountLoginSyncTest extends TestCase
         $r = $this->deactivate();
 
         $this->assertFalse($r['json']['account']['login_sync_pending']);
-        $this->assertSame(0, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame([], $this->app->openCalls(self::TARGET));
         $this->assertSame(['deactivate', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
     }
 
@@ -105,7 +105,7 @@ final class AccountLoginSyncTest extends TestCase
         $this->assertContains('resync_login', array_column($r['json']['account_actions'], 'action'));
         $row = $this->row(self::TARGET);
         $this->assertSame('inactive', $row['status']);
-        $this->assertSame(1, (int) $row['login_sync_pending']);
+        $this->assertSame(['disable_login'], array_keys($this->app->openCalls(self::TARGET)));
         $this->assertCount(1, $this->stub->disableLoginCalls());
         $this->assertCount(1, $this->app->auditLog(), 'die Deaktivierung gilt als erfolgt und ist auditiert');
         $token = $this->app->request('GET', '/api/me', ['HTTP_AUTHORIZATION' => 'Bearer ' . TestTokens::access(self::TARGET)]);
@@ -144,7 +144,7 @@ final class AccountLoginSyncTest extends TestCase
     {
         $this->stub->script('disable-login', ['status' => 503, 'body' => []]);
         $this->deactivate();
-        $this->assertSame(1, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame(['disable_login' => null], $this->app->openCalls(self::TARGET));
     }
 
     public function testAbgleichWiederholenRuftDisableLoginErneutAufUndEntferntDieMarkierung(): void
@@ -155,7 +155,7 @@ final class AccountLoginSyncTest extends TestCase
 
         $this->assertSame(200, $r['status']);
         $this->assertFalse($r['json']['account']['login_sync_pending']);
-        $this->assertSame(0, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame([], $this->app->openCalls(self::TARGET));
         $this->assertSame(['deactivate', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
         $calls = $this->stub->disableLoginCalls();
         $this->assertCount(2, $calls);
@@ -177,7 +177,7 @@ final class AccountLoginSyncTest extends TestCase
         } else {
             $this->assertSame([502, 'auth_unavailable'], [$r['status'], $r['json']['code']]);
         }
-        $this->assertSame(1, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame(['disable_login'], array_keys($this->app->openCalls(self::TARGET)));
         $this->assertSame('inactive', $this->row(self::TARGET)['status']);
     }
 
@@ -200,7 +200,7 @@ final class AccountLoginSyncTest extends TestCase
         $r = $this->resync(self::TARGET, self::MANAGER);
 
         $this->assertSame(403, $r['status']);
-        $this->assertSame(1, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame(['disable_login' => null], $this->app->openCalls(self::TARGET));
         $this->assertCount(1, $this->stub->disableLoginCalls());
     }
 
@@ -250,7 +250,7 @@ final class AccountLoginSyncTest extends TestCase
         $this->assertSame(200, $r['status']);
         $this->assertTrue($r['json']['account']['login_sync_pending']);
         $this->assertSame('user_not_found', $r['json']['account']['login_sync_error']);
-        $this->assertSame('user_not_found', $this->row(self::TARGET)['login_sync_error']);
+        $this->assertSame(['disable_login' => 'user_not_found'], $this->app->openCalls(self::TARGET));
         $detail = $this->as(self::ADMIN, 'GET', '/api/accounts/' . self::TARGET . '/access');
         $this->assertSame('user_not_found', $detail['json']['account']['login_sync_error']);
     }
@@ -263,7 +263,7 @@ final class AccountLoginSyncTest extends TestCase
 
         $this->assertTrue($r['json']['account']['login_sync_pending']);
         $this->assertNull($r['json']['account']['login_sync_error']);
-        $this->assertNull($this->row(self::TARGET)['login_sync_error']);
+        $this->assertSame(['disable_login' => null], $this->app->openCalls(self::TARGET));
     }
 
     public function testAbgleichWiederholenAktualisiertDenGespeichertenCodeBeiAblehnung(): void
@@ -275,9 +275,7 @@ final class AccountLoginSyncTest extends TestCase
         $r = $this->resync();
 
         $this->assertSame([409, 'other_reason'], $this->codeOf($r), 'die Ablehnung geht wie bisher mit Status und Code weiter');
-        $row = $this->row(self::TARGET);
-        $this->assertSame('other_reason', $row['login_sync_error']);
-        $this->assertSame(1, (int) $row['login_sync_pending']);
+        $this->assertSame(['disable_login' => 'other_reason'], $this->app->openCalls(self::TARGET));
         $detail = $this->as(self::ADMIN, 'GET', '/api/accounts/' . self::TARGET . '/access');
         $this->assertSame('other_reason', $detail['json']['account']['login_sync_error']);
     }
@@ -291,7 +289,7 @@ final class AccountLoginSyncTest extends TestCase
 
         $this->assertSame(200, $r['status']);
         $this->assertNull($r['json']['account']['login_sync_error']);
-        $this->assertNull($this->row(self::TARGET)['login_sync_error']);
+        $this->assertSame([], $this->app->openCalls(self::TARGET));
     }
 
     public function testDieReaktivierungLeertDenCode(): void
@@ -303,27 +301,33 @@ final class AccountLoginSyncTest extends TestCase
 
         $row = $this->row(self::TARGET);
         $this->assertSame('active', $row['status']);
-        $this->assertNull($row['login_sync_error']);
+        $this->assertSame([], $this->app->openCalls(self::TARGET));
     }
 
-    public function testDieMigration0011IstWiederholbarUndBehaeltDenCode(): void
+    public function testDieMigration0013IstWiederholbarUndBehaeltDieOffenenAufrufeMitCode(): void
     {
         $this->stub->script('disable-login', $this->rejection());
         $this->deactivate();
 
-        $this->app->rerunMigrations('0011_account_login_sync_error.php');
+        $this->app->rerunMigrations('0013_account_open_calls.php');
 
-        $this->assertSame('user_not_found', $this->row(self::TARGET)['login_sync_error']);
+        $this->assertSame(['disable_login' => 'user_not_found'], $this->app->openCalls(self::TARGET));
     }
 
-    public function testDieMigrationIstWiederholbarUndBehaeltDieMarkierung(): void
+    public function testDieMigration0013UebernimmtDieAlteMarkierungUndDenCodeAusDenSpalten(): void
     {
-        $this->stub->script('disable-login', ['status' => 503, 'body' => []]);
-        $this->deactivate();
+        $pdo = $this->app->pdo();
+        $pdo->exec('ALTER TABLE `accounts` ADD COLUMN `login_sync_pending` tinyint(1) NOT NULL DEFAULT 0, ADD COLUMN `login_sync_error` varchar(64) NULL DEFAULT NULL');
+        $this->app->createAccount(self::MANAGER, 'inactive', 'andere@schule.test');
+        $pdo->exec("UPDATE `accounts` SET `login_sync_pending` = 1, `login_sync_error` = 'user_not_found', `inactive_reason` = 'admin_locked' WHERE `public_user_id` = '" . self::MANAGER . "'");
+        $this->assertSame([], $this->app->openCalls(self::MANAGER));
 
-        $this->app->rerunMigrations('0010_account_login_sync_pending.php');
+        $this->app->rerunMigrations('0013_account_open_calls.php');
 
-        $this->assertSame(1, (int) $this->row(self::TARGET)['login_sync_pending']);
+        $this->assertSame(['disable_login' => 'user_not_found'], $this->app->openCalls(self::MANAGER));
+        $this->assertSame([], $this->app->openCalls(self::TARGET), 'ein Konto ohne offene Markierung bekommt keinen Aufruf');
+        $columns = $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'accounts' AND COLUMN_NAME LIKE 'login_sync%'")->fetchAll(\PDO::FETCH_COLUMN);
+        $this->assertSame([], $columns, 'die alten Spalten entfallen');
     }
 
     /** @return array{int,mixed} */

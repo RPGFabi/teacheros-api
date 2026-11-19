@@ -24,12 +24,20 @@ final class AccountActionRules
         $this->actor = new ActorPermissions($actorId);
     }
 
-    /** Nur das Recht (ohne Blick auf ein Zielkonto), z. B. fuer "Abgleich wiederholen". */
+    /**
+     * Nur das Recht (ohne Blick auf ein Zielkonto), z. B. fuer "Abgleich wiederholen". Das wiederholt, wer eines der
+     * Konto-Rechte hat ({@see PermissionCatalog::ACCOUNT_ACTION_RIGHTS}); die uebrigen Aktionen verlangen `accounts.deactivate`.
+     */
     public function rightRefusal(): ?CodedException
     {
-        return $this->actor->can(PermissionCatalog::ACCOUNTS_DEACTIVATE)
+        $held = $this->action === AccountAction::ResyncLogin
+            ? array_filter(PermissionCatalog::ACCOUNT_ACTION_RIGHTS, $this->actor->can(...)) !== []
+            : $this->actor->can(PermissionCatalog::ACCOUNTS_DEACTIVATE);
+        return $held
             ? null
-            : new CodedException('forbidden', 403, 'Dafür fehlt Ihnen das Recht, Konten zu ' . $this->action->verb() . '.');
+            : new CodedException('forbidden', 403, $this->action === AccountAction::ResyncLogin
+                ? 'Dafür fehlt Ihnen das Recht, den Abgleich mit dem Anmeldedienst zu wiederholen.'
+                : 'Dafür fehlt Ihnen das Recht, Konten zu ' . $this->action->verb() . '.');
     }
 
     /** Pruefreihenfolge: Recht, sich selbst, P2. */
