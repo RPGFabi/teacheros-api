@@ -8,6 +8,7 @@ use Hoelzle\Core\Database\DB;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
 use TeacherOS\Shared\Exceptions\CodedException;
+use TeacherOS\Shared\Uuid;
 
 /**
  * Schuljahre ansehen und anlegen (Ticket #54, GLOSSARY.md: Schuljahr). Die Bezeichnung kommt aus dem Zeitraum
@@ -39,6 +40,21 @@ final class SchoolYears
     }
 
     /**
+     * Ein Schuljahr nach Kennung, oder null, wenn es keines mit dieser Kennung gibt.
+     *
+     * @return array{id:string,name:string,starts_on:string,ends_on:string,status:string}|null
+     */
+    public function find(string $id): ?array
+    {
+        foreach ($this->list() as $year) {
+            if ($year['id'] === $id) {
+                return $year;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Legt ein Schuljahr an: Ueberschneidungen werden abgelehnt (gleicher Tag zaehlt), Luecken sind erlaubt. Pruefung,
      * Anlegen und Audit-Eintrag `school_year.created` laufen unter einer Sperre in einer Transaktion, damit zwei
      * gleichzeitige Anfragen sich nicht beide durchsetzen.
@@ -55,7 +71,7 @@ final class SchoolYears
             throw new CodedException('school_years_busy', 503, 'Die Schuljahre werden gerade geändert. Bitte versuchen Sie es gleich noch einmal.');
         }
         try {
-            $id = self::newId();
+            $id = Uuid::v4();
             $pdo->beginTransaction();
             try {
                 if ($this->repository->overlaps($period)) {
@@ -72,12 +88,7 @@ final class SchoolYears
             $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([self::LOCK]);
         }
 
-        foreach ($this->list() as $year) {
-            if ($year['id'] === $id) {
-                return $year;
-            }
-        }
-        throw new \LogicException('Das angelegte Schuljahr fehlt in der Liste.');
+        return $this->find($id) ?? throw new \LogicException('Das angelegte Schuljahr fehlt in der Liste.');
     }
 
     /**
@@ -101,13 +112,5 @@ final class SchoolYears
             ];
         }
         return $years;
-    }
-
-    private static function newId(): string
-    {
-        $bytes = random_bytes(16);
-        $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
-        $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
-        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 }

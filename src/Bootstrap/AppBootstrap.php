@@ -13,6 +13,7 @@ use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
+use TeacherOS\Modules\Classes\ClassRoutes;
 use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Shared\Modules\ModuleEntitlements;
@@ -90,6 +91,8 @@ final class AppBootstrap
         // ModuleGate::route(): Anmeldung, dann Modulfreigabe, dann Rechte (ADR 0002 B5, Ticket #13).
         // Schuljahre (Ticket #54): erste Routen der Stammdaten, ebenfalls `core`.
         SchoolYearRoutes::register($router);
+        // Klassen (Ticket #55): ebenfalls `core`.
+        ClassRoutes::register($router);
 
         self::registerTestRoutes($router);
     }

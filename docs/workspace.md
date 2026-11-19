@@ -224,6 +224,27 @@ Erstes Stammdaten-Ticket (Spec #17; Glossar: Schuljahr). Führt die Rechtegruppe
 - Code: `src/Modules/SchoolYears/` (`SchoolYearRoutes`, `SchoolYearsController`, `SchoolYears`, `SchoolYearRepository`, `SchoolYearPeriod`, `SchoolYearStatus`). Tests: `tests/SchoolYears/`; die echten Routen hängt `tests/Support/module-probe-routes.php` zusätzlich unter das nicht freigegebene Modul `observe`, um „Modulprüfung vor Rechteprüfung“ zu beweisen.
 - Web: Seite „Schuljahre“ (`src/school-years/`, Menüpunkt `#/schuljahre` nur mit `school_years.view`, Formular nur mit `school_years.manage`), Liste mit Status-Badge, Vorschau der Bezeichnung, auf dem Smartphone als Karten.
 
+## Klassen (Ticket #55)
+
+Zweites Stammdaten-Ticket (Spec #17; Glossar: Klasse, Klassenstufe). Neue Rechte in der Gruppe „Stammdaten“: `classes.view` („Klassen ansehen“) und `classes.manage` („Klassen verwalten“). Standardrollen haben sie nicht voreingestellt, Schuladmin über die Wildcard. `classes.view` setzt `school_years.view` nicht voraus, `manage` schließt `view` nicht ein. Die Routen gehören zu `core` und laufen über `ModuleGate::route()`. Das Ticket nennt keine Pfade; gewählt wurden `/api/classes` mit Schuljahr als Query beziehungsweise Body-Feld.
+
+| Endpunkt | Recht | Body / Query | Antwort |
+|---|---|---|---|
+| `GET /api/classes?school_year_id=<Kennung>` | `classes.view` | Query `school_year_id` (Pflicht) | `200 {"classes": [{id, grade_level, name, school_year: {id, name}}]}`, sortiert nach Klassenstufe, dann natürlich nach Bezeichnung (7a, 7b, …, 10a) |
+| `GET /api/classes/school-years` | `classes.view` | – | `200 {"school_years": [{id, name, starts_on, ends_on, status}]}`, nach Beginn aufsteigend; dieselbe Zeile und derselbe Status wie `GET /api/school-years`, aber ohne `school_years.view`, damit die Seite „Klassen“ mit nur `classes.view` ein Schuljahr wählen kann |
+| `POST /api/classes` | `classes.manage` | `{school_year_id, grade_level, name}` | `201 {"class": {…}}` (Zeile wie in der Liste) |
+
+- **Klassenstufe** `grade_level`: ganze Zahl (JSON-Zahl, kein Text) von 1 bis 13. **Bezeichnung** `name`: nach dem Trimmen 1 bis 20 Zeichen; gespeichert wird die getrimmte Fassung. Die Bezeichnung wird nicht gegen die Klassenstufe geprüft („7c“ in Stufe 9 ist erlaubt).
+- **Eindeutigkeit:** Die Bezeichnung ist innerhalb des Schuljahres eindeutig, Groß-/Kleinschreibung egal („7a“ = „7A“); „7ä“ ist eine andere Bezeichnung. In einem anderen Schuljahr darf dieselbe Bezeichnung erneut vorkommen (neue Klasse). Anlegen geht in jedem Schuljahr (laufend, kommend, vergangen).
+- **Schuljahr:** Jede Klassenantwort trägt Kennung und Bezeichnung des Schuljahres mit. Die Zugehörigkeit ist unveränderlich (Fremdschlüssel auf `school_years`; ein Schuljahr mit Klassen lässt sich nicht löschen).
+- **Fehler:** `400 invalid_request` (fehlende oder ungültige Schuljahr-Kennung, Klassenstufe oder Bezeichnung; fehlendes `school_year_id` in der Liste), `404 school_year_not_found`, `409 class_name_taken`, `403 forbidden`, `401`; hinter nicht freigegebenem Modul `403 module_disabled` vor der Rechteprüfung.
+- **Vorauswahl im Web** („laufendes Schuljahr, sonst zuletzt vergangenes“) leitet sich aus dem `status` der Schuljahre ab (`running`, sonst das letzte `past`), es gibt keine zweite Regel.
+- **Speicherung:** Tabelle `classes` (Migration 0014: `id` UUID, `school_year_id`, `grade_level`, `name`, `name_key` = kleingeschriebene Bezeichnung, binär verglichen; eindeutiger Schlüssel `(school_year_id, name_key)` sichert die Eindeutigkeit auch bei gleichzeitigen Anfragen). Anlegen und Audit laufen in einer Transaktion.
+- **Audit:** `class.created` (Objekt `class`, Objekt-ID = Kennung, Kontext `name`, `grade_level`, `school_year_id`).
+- Code: `src/Modules/Classes/` (`ClassRoutes`, `ClassesController`, `Classes`, `ClassRepository`, `ClassInput`); Schuljahre und Status kommen aus `SchoolYears` (neu: `find`), Kennungen aus `Shared\Uuid`. Tests: `tests/Classes/`; die Routen hängt `tests/Support/module-probe-routes.php` zusätzlich unter `observe` (`/api/test/observe-classes`). Der Test-Harness (`HttpTestApp`) setzt jetzt `QUERY_STRING` aus der URI.
+- Archivieren, Bearbeiten und Löschen von Klassen folgen mit #56/#57.
+- Web: Seite „Klassen“ (`src/classes/`, Menüpunkt nur mit `classes.view`, Formular nur mit `classes.manage`, Schuljahr-Auswahl) und der Abschnitt „Klassen“ in der Detailansicht eines Schuljahres.
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)

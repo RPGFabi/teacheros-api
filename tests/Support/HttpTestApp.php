@@ -52,6 +52,7 @@ final class HttpTestApp
             $env = array_merge($this->env(), [
                 'REQUEST_METHOD' => $method,
                 'REQUEST_URI' => $uri,
+                'QUERY_STRING' => (string) parse_url($uri, PHP_URL_QUERY),
                 'SCRIPT_FILENAME' => $this->root . '/public/index.php',
                 'REDIRECT_STATUS' => '200',
                 'GATEWAY_INTERFACE' => 'CGI/1.1',
@@ -132,9 +133,22 @@ final class HttpTestApp
         $this->pdo()->exec('DELETE FROM `audit_log`');
     }
 
-    /** Entfernt alle Schuljahre (Testaufbau). */
+    /** Entfernt alle Klassen (Testaufbau). */
+    public function resetClasses(): void
+    {
+        $this->pdo()->exec('DELETE FROM `classes`');
+    }
+
+    /** @return list<array<string,mixed>> nach Anlegezeitpunkt */
+    public function classes(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `classes` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** Entfernt alle Schuljahre samt ihrer Klassen (Testaufbau). */
     public function resetSchoolYears(): void
     {
+        $this->resetClasses();
         $this->pdo()->exec('DELETE FROM `school_years`');
     }
 

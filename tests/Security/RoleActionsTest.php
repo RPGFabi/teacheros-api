@@ -108,7 +108,7 @@ final class RoleActionsTest extends TestCase
         $this->assertSame(['edit', 'delete', 'set_mfa'], array_keys($actions));
         array_map($this->assertAllowed(...), $actions);
         $permissions = $this->permissionActions($role);
-        $this->assertEqualsCanonicalizing(['accounts.invite', 'accounts.deactivate', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage'], array_keys($permissions), 'nur Rechte, die die Rolle noch nicht hat');
+        $this->assertEqualsCanonicalizing(['accounts.invite', 'accounts.deactivate', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'], array_keys($permissions), 'nur Rechte, die die Rolle noch nicht hat');
         array_map($this->assertAllowed(...), $permissions);
     }
 
@@ -174,7 +174,7 @@ final class RoleActionsTest extends TestCase
         $permissions = $this->permissionActions($role);
         $this->assertAllowed($permissions['accounts.view']);
         $this->assertAllowed($permissions['roles.manage']);
-        foreach (['accounts.invite', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage'] as $key) {
+        foreach (['accounts.invite', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'] as $key) {
             $this->assertRefused('permission_not_held', $permissions[$key]);
         }
     }
@@ -196,7 +196,7 @@ final class RoleActionsTest extends TestCase
     {
         $admin = $this->get()['json']['create'];
         $this->assertAllowed($admin);
-        $this->assertCount(8, $admin['permission_actions']);
+        $this->assertCount(10, $admin['permission_actions']);
         array_map($this->assertAllowed(...), $admin['permission_actions']);
 
         $manager = $this->get(self::MANAGER)['json']['create'];
@@ -213,6 +213,6 @@ final class RoleActionsTest extends TestCase
 
         $this->assertSame(201, $r['status'], $r['body']);
         $this->assertSame(['edit', 'delete', 'set_mfa'], array_column($r['json']['role']['actions'], 'action'));
-        $this->assertCount(8, $r['json']['role']['permission_actions']);
+        $this->assertCount(10, $r['json']['role']['permission_actions']);
     }
 }

@@ -9,6 +9,7 @@ declare(strict_types=1);
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Bootstrap\ApiRouter;
+use TeacherOS\Modules\Classes\ClassRoutes;
 use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Shared\Modules\ModuleCatalog;
 use TeacherOS\Shared\Modules\ModuleGate;
@@ -26,4 +27,6 @@ return static function (ApiRouter $router): void {
 
     // Die echten Schuljahr-Routen (Ticket #54) unter einem Modul ohne Freigabe: beweist, dass die Modulpruefung vor den Rechten laeuft.
     SchoolYearRoutes::register($router, ModuleCatalog::OBSERVE, '/api/test/observe-school-years');
+    // Ebenso die Klassen-Routen (Ticket #55).
+    ClassRoutes::register($router, ModuleCatalog::OBSERVE, '/api/test/observe-classes');
 };

@@ -22,6 +22,8 @@ final class PermissionCatalog
     public const ACCOUNTS_DEACTIVATE = 'accounts.deactivate';
     public const SCHOOL_YEARS_VIEW = 'school_years.view';
     public const SCHOOL_YEARS_MANAGE = 'school_years.manage';
+    public const CLASSES_VIEW = 'classes.view';
+    public const CLASSES_MANAGE = 'classes.manage';
 
     /**
      * Die drei Verwaltungsrechte (ADR 0002 B4). Wer eines hat, darf Rollen, Rechte-Katalog und
@@ -55,6 +57,8 @@ final class PermissionCatalog
             ['key' => self::PERMISSIONS_ASSIGN, 'name' => 'Einzelrechte vergeben und entziehen', 'group' => self::GROUP_ROLES],
             ['key' => self::SCHOOL_YEARS_VIEW, 'name' => 'Schuljahre ansehen', 'group' => self::GROUP_MASTER_DATA],
             ['key' => self::SCHOOL_YEARS_MANAGE, 'name' => 'Schuljahre verwalten', 'group' => self::GROUP_MASTER_DATA],
+            ['key' => self::CLASSES_VIEW, 'name' => 'Klassen ansehen', 'group' => self::GROUP_MASTER_DATA],
+            ['key' => self::CLASSES_MANAGE, 'name' => 'Klassen verwalten', 'group' => self::GROUP_MASTER_DATA],
         ];
     }
 

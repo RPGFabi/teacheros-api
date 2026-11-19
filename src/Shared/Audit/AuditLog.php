@@ -43,6 +43,9 @@ final class AuditLog
     /** Ein Schuljahr wurde angelegt (Ticket #54); Objekt: Kennung des Schuljahres, Kontext: name (Bezeichnung). */
     public const SCHOOL_YEAR_CREATED = 'school_year.created';
 
+    /** Eine Klasse wurde angelegt (Ticket #55); Objekt: Kennung der Klasse, Kontext: name, grade_level, school_year_id. */
+    public const CLASS_CREATED = 'class.created';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {
