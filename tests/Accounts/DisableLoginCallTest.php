@@ -14,7 +14,7 @@ use TeacherOS\Tests\Support\TestTokens;
  * `disable-login` mit `admin_locked` nach der lokalen Sperre, Markierung "Abgleich offen" bei Ausfall und
  * `POST /api/accounts/{id}/resync-login`. HTTP-Tests gegen MariaDB und den Auth-Stub.
  */
-final class AccountLoginSyncTest extends TestCase
+final class DisableLoginCallTest extends TestCase
 {
     private const ADMIN = '11111111-1111-4111-8111-111111111111';
     private const TARGET = '33333333-3333-4333-8333-333333333333';
@@ -75,7 +75,7 @@ final class AccountLoginSyncTest extends TestCase
 
         $this->assertFalse($r['json']['account']['login_sync_pending']);
         $this->assertSame([], $this->app->openCalls(self::TARGET));
-        $this->assertSame(['deactivate', 'revoke_sessions', 'reset_mfa', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
+        $this->assertSame(['deactivate', 'revoke_sessions', 'reset_totp', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
     }
 
     // ---- Ausfall des Anmeldedienstes: lokale Sperre bleibt, "Abgleich offen" --------------------
@@ -156,7 +156,7 @@ final class AccountLoginSyncTest extends TestCase
         $this->assertSame(200, $r['status']);
         $this->assertFalse($r['json']['account']['login_sync_pending']);
         $this->assertSame([], $this->app->openCalls(self::TARGET));
-        $this->assertSame(['deactivate', 'revoke_sessions', 'reset_mfa', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
+        $this->assertSame(['deactivate', 'revoke_sessions', 'reset_totp', 'reactivate'], array_column($r['json']['account_actions'], 'action'));
         $calls = $this->stub->disableLoginCalls();
         $this->assertCount(2, $calls);
         $this->assertSame(['event' => 'user.self_deleted', 'public_user_id' => self::TARGET, 'reason' => 'admin_locked'], $calls[1]['body']);
@@ -314,20 +314,41 @@ final class AccountLoginSyncTest extends TestCase
         $this->assertSame(['disable_login' => 'user_not_found'], $this->app->openCalls(self::TARGET));
     }
 
-    public function testDieMigration0013UebernimmtDieAlteMarkierungUndDenCodeAusDenSpalten(): void
+    /** Vor dem ersten Lauf von 0013: die Tabelle fehlt, die alten Spalten tragen die Markierung (ADR 0004, Expand). */
+    private function legacyColumnsWithoutTable(): \PDO
     {
         $pdo = $this->app->pdo();
-        $pdo->exec('ALTER TABLE `accounts` ADD COLUMN `login_sync_pending` tinyint(1) NOT NULL DEFAULT 0, ADD COLUMN `login_sync_error` varchar(64) NULL DEFAULT NULL');
+        $pdo->exec('DROP TABLE IF EXISTS `account_open_calls`');
+        $pdo->exec('ALTER TABLE `accounts` ADD COLUMN IF NOT EXISTS `login_sync_pending` tinyint(1) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS `login_sync_error` varchar(64) NULL DEFAULT NULL');
+        return $pdo;
+    }
+
+    public function testDieMigration0013UebernimmtDieAlteMarkierungUndDenCodeAusDenSpalten(): void
+    {
+        $pdo = $this->legacyColumnsWithoutTable();
         $this->app->createAccount(self::MANAGER, 'inactive', 'andere@schule.test');
         $pdo->exec("UPDATE `accounts` SET `login_sync_pending` = 1, `login_sync_error` = 'user_not_found', `inactive_reason` = 'admin_locked' WHERE `public_user_id` = '" . self::MANAGER . "'");
-        $this->assertSame([], $this->app->openCalls(self::MANAGER));
 
         $this->app->rerunMigrations('0013_account_open_calls.php');
 
         $this->assertSame(['disable_login' => 'user_not_found'], $this->app->openCalls(self::MANAGER));
         $this->assertSame([], $this->app->openCalls(self::TARGET), 'ein Konto ohne offene Markierung bekommt keinen Aufruf');
         $columns = $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'accounts' AND COLUMN_NAME LIKE 'login_sync%'")->fetchAll(\PDO::FETCH_COLUMN);
-        $this->assertSame([], $columns, 'die alten Spalten entfallen');
+        $this->assertEqualsCanonicalizing(['login_sync_pending', 'login_sync_error'], $columns, 'die alten Spalten bleiben fuer das vorige Backend (ADR 0004: erst spaeter eine Contract-Migration)');
+    }
+
+    public function testEineWiederholungDerMigration0013BringtKeinenErledigtenAufrufZurueck(): void
+    {
+        $pdo = $this->legacyColumnsWithoutTable();
+        $this->app->createAccount(self::MANAGER, 'inactive', 'andere@schule.test');
+        $pdo->exec("UPDATE `accounts` SET `login_sync_pending` = 1, `inactive_reason` = 'admin_locked' WHERE `public_user_id` = '" . self::MANAGER . "'");
+        $this->app->rerunMigrations('0013_account_open_calls.php');
+        $this->assertSame(['disable_login' => null], $this->app->openCalls(self::MANAGER));
+        $pdo->exec("DELETE FROM `account_open_calls` WHERE `account_id` = '" . self::MANAGER . "'"); // der Abgleich ist gelungen; die alte Spalte steht noch auf 1
+
+        $this->app->rerunMigrations('0013_account_open_calls.php');
+
+        $this->assertSame([], $this->app->openCalls(self::MANAGER), 'die veraltete Spalte darf den erledigten Aufruf nicht wiederbeleben');
     }
 
     /** @return array{int,mixed} */

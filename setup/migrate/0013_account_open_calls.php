@@ -9,8 +9,17 @@ use Hoelzle\Core\Database\DB;
 // Eine Zeile je Konto und Aufruf (`operation`, z. B. `disable_login`; weitere kommen mit Widerruf und Zuruecksetzung ohne
 // Schemaaenderung), `rejection_code` ist der Code, mit dem der Dienst zuletzt fachlich abgelehnt hat (NULL: noch nicht
 // versucht oder nicht erreichbar). Die Reihenfolge des Nachholens legt die Registry im Code fest, nicht die Tabelle.
-// Gefahrlos wiederholbar: die Uebernahme der alten Spalten laeuft nur, solange sie noch existieren.
+//
+// Expand-Schritt nach ADR 0004 (Expand/Contract): die alten Spalten `login_sync_pending` und `login_sync_error` bleiben, weil das
+// vorige Backend sie noch liest; das neue Backend liest und schreibt sie nicht mehr (sie sind ein veralteter Stand). TODO: eine spaetere
+// Contract-Migration entfernt sie, sobald kein Backend mehr laeuft, das sie liest.
+// Gefahrlos wiederholbar: die Uebernahme der alten Spalten laeuft nur im Lauf, der die Tabelle anlegt. Eine Wiederholung danach
+// liesse sonst erledigte Aufrufe wieder aufleben, weil die alten Spalten nicht mehr nachgefuehrt werden.
 $pdo = DB::getInstance();
+$tableExisted = (int) $pdo->query(
+    "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'account_open_calls'"
+)->fetchColumn() > 0;
+
 $pdo->exec(
     "CREATE TABLE IF NOT EXISTS `account_open_calls` (
         `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -28,14 +37,10 @@ $hasColumn = static fn (string $column): bool => (int) $pdo->query(
     "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'accounts' AND COLUMN_NAME = '$column'"
 )->fetchColumn() > 0;
 
-if ($hasColumn('login_sync_pending')) {
+if (!$tableExisted && $hasColumn('login_sync_pending')) {
     $error = $hasColumn('login_sync_error') ? '`login_sync_error`' : 'NULL';
     $pdo->exec(
         "INSERT IGNORE INTO `account_open_calls` (`account_id`, `operation`, `rejection_code`)
          SELECT `public_user_id`, 'disable_login', $error FROM `accounts` WHERE `status` = 'inactive' AND `login_sync_pending` = 1"
     );
-    $pdo->exec('ALTER TABLE `accounts` DROP COLUMN `login_sync_pending`');
-}
-if ($hasColumn('login_sync_error')) {
-    $pdo->exec('ALTER TABLE `accounts` DROP COLUMN `login_sync_error`');
 }

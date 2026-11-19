@@ -11,7 +11,7 @@ use TeacherOS\Tests\Support\TestTokens;
 /**
  * Konto deaktivieren wirkt sofort (Ticket #41, ADR 0002 B1/B2 und Nachtrag #12): POST /api/accounts/{id}/deactivate
  * und die Wirkung auf bereits ausgestellte Tokens, ueber HTTP (php-cgi + MariaDB). Der Abgleich mit dem
- * Anmeldedienst steht in AccountLoginSyncTest (Ticket #42); hier ist keiner konfiguriert, die Deaktivierung gilt dann mit "Abgleich offen".
+ * Anmeldedienst steht in DisableLoginCallTest (Ticket #42); hier ist keiner konfiguriert, die Deaktivierung gilt dann mit "Abgleich offen".
  */
 final class AccountDeactivationTest extends TestCase
 {
