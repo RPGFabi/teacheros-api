@@ -83,6 +83,8 @@ final class AppBootstrap
         $router->post('/api/accounts/:id/reactivate', [AccountAccessController::class, 'reactivate'], $deactivator);
         // Sitzungswiderruf durch die Verwaltung (Ticket #48): eigenes Recht, dazu accounts.view wegen der Lesesicht als Antwort.
         $router->post('/api/accounts/:id/revoke-sessions', [AccountAccessController::class, 'revokeSessions'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_REVOKE_SESSIONS), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
+        // TOTP-Zuruecksetzung durch die Verwaltung (Ticket #49): eigenes Recht, dazu accounts.view wegen der Lesesicht als Antwort.
+        $router->post('/api/accounts/:id/reset-mfa', [AccountAccessController::class, 'resetMfa'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_RESET_MFA), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
 
         // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.
         $permissionAssigner = [...$authenticated, RequirePermission::for(PermissionCatalog::PERMISSIONS_ASSIGN)];

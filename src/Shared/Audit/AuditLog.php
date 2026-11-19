@@ -34,6 +34,9 @@ final class AuditLog
     /** Die Verwaltung (oder das Konto selbst, Ticket #50) hat alle Sitzungen eines Kontos beendet (Ticket #48); Kontext: initiated_by (`admin` oder `self`). */
     public const ACCOUNT_SESSIONS_REVOKED = 'account.sessions_revoked';
 
+    /** Die Verwaltung hat das TOTP eines Kontos zurueckgesetzt (Ticket #49); ohne Kontext (ob TOTP eingerichtet war, ist bei gescheitertem Abgleich unbekannt). */
+    public const ACCOUNT_MFA_RESET = 'account.mfa_reset';
+
     public const PERMISSION_GRANTED = 'permission.granted';
     public const PERMISSION_WITHDRAWN = 'permission.withdrawn';
     public const PERMISSION_OVERRIDE_CLEARED = 'permission.override_cleared';

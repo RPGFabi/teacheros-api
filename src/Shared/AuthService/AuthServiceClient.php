@@ -140,6 +140,22 @@ final class AuthServiceClient
     }
 
     /**
+     * Setzt das TOTP eines Kontos im Anmeldedienst zurueck (G1, idempotent): Secret, Recovery-Codes, vertrauenswuerdige Geraete
+     * und alle Refresh-Tokens sind danach weg; war MFA aktiv, geht eine Sicherheitsmail an die Person. Ist fuer das Konto die
+     * MFA-Pflicht gesetzt, richtet es TOTP beim naechsten Login neu ein. Die API sperrt Access-Tokens ueber `sessions_valid_after`.
+     *
+     * @throws AuthServiceUnavailableException
+     * @throws CodedException wie bei {@see invite()}
+     */
+    public function resetMfa(string $publicUserId): void
+    {
+        [$status, $json] = $this->post('/internal/users/mfa-reset', ['event' => 'user.mfa_reset', 'public_user_id' => $publicUserId]);
+        if ($status !== 200 || ($json['ok'] ?? false) !== true) { // 200 ohne lesbares {"ok": true} gilt nicht als Erfolg
+            throw $this->failure($status, $json, 'die Zuruecksetzung des TOTP');
+        }
+    }
+
+    /**
      * Uebersetzt eine nicht erfolgreiche Antwort: fachliche 4xx (mit `code`, bei 400 mit lesbarer Antwort auch ohne: `invalid_request`)
      * gehen mit ihrem Status und Code an den Aufrufer; alles andere (5xx, Fehlkonfiguration wie ein falsches
      * Secret, unlesbare Antwort) ist "Anmeldedienst nicht verfuegbar".

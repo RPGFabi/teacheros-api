@@ -93,6 +93,16 @@ final class AccountAccessController
     }
 
     /**
+     * TOTP-Zuruecksetzung durch die Verwaltung (Ticket #49): schliesst den Sitzungswiderruf ein, fuer aktive und deaktivierte Konten.
+     * Scheitert der Aufruf an den Anmeldedienst, bleibt sie bestehen (200); die Lesesicht nennt ihn in `account.open_calls`, und jedes
+     * Token des Kontos wird abgelehnt, bis er nachgeholt ist. Fehler: 403 `forbidden`/`permission_not_held`, 409 `self_mfa_reset`/`account_not_active`.
+     */
+    public static function resetMfa(Request $request, Response $response): void
+    {
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->resetMfa($actor, $accountId));
+    }
+
+    /**
      * "Abgleich wiederholen" (Tickets #42, #47): holt alle offenen Aufrufe in fester Reihenfolge nach (heute die Sperre,
      * `disable-login`). Kein Audit-Eintrag. Fehler: 409 `sync_not_pending`, 502 `auth_unavailable`, fachliche Ablehnung mit
      * Status und Code des Anmeldedienstes (der Aufruf bleibt offen, der Code wird festgehalten). Antwort: die aktuelle Lesesicht.

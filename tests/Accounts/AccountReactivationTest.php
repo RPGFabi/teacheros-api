@@ -133,7 +133,7 @@ final class AccountReactivationTest extends TestCase
 
         $this->assertSame(200, $r['status']);
         $this->assertSame([], $this->app->openCalls(self::TARGET));
-        $this->assertSame(['deactivate', 'revoke_sessions'], array_column($r['json']['account_actions'], 'action'));
+        $this->assertSame(['deactivate', 'revoke_sessions', 'reset_mfa'], array_column($r['json']['account_actions'], 'action'));
     }
 
     // ---- Anmeldedienst lehnt ab oder ist nicht erreichbar: lokal aendert sich nichts -----------------

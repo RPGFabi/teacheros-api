@@ -10,7 +10,7 @@ namespace TeacherOS\Shared\Security;
  * oder das TOTP noch nicht zurueckgesetzt (G1). B2 sperrt aber nur Tokens bis zur Sitzungsgrenze, ein Refresh-Token koennte
  * neue Tokens erzeugen. Darum lehnt die Authentifizierung ({@see AuthenticationMiddleware}) **jedes** Token des Kontos mit
  * 401 `session_revoked` ab, solange ein solcher Aufruf offen ist, und versucht beim ersten Token nach der Grenze, ihn
- * nachzuholen ({@see OpenCalls::releaseTokens()}). Wer einen neuen blockierenden Aufruf einfuehrt (TOTP-Zuruecksetzung, #49),
+ * nachzuholen ({@see OpenCalls::releaseTokens()}). Wer einen neuen blockierenden Aufruf einfuehrt (bisher Widerruf, #48, und TOTP-Zuruecksetzung, #49),
  * markiert seinen Handler mit dieser Schnittstelle und traegt ihn in {@see OpenCalls::standardHandlers()} ein; sonst ist nichts zu tun.
  */
 interface TokenBlockingCall extends OpenCallHandler

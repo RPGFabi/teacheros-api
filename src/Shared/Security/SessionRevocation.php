@@ -39,37 +39,14 @@ final class SessionRevocation
      */
     public function revoke(Actor $actor, string $accountId, RevocationInitiator $initiator, int $attempts = 1, ?callable $precondition = null): bool
     {
-        $pdo = DB::getInstance();
-        if ($pdo->inTransaction()) {
-            throw new \LogicException('Der Widerruf ruft den Anmeldedienst erst auf, wenn die lokale Wirkung festgeschrieben ist.');
-        }
-        $pdo->beginTransaction();
-        try {
-            $account = $this->accounts->lock($accountId);
-            if ($precondition !== null && ($refusal = $precondition($account)) !== null) {
-                throw $refusal;
-            }
-            $this->accounts->revokeSessions($accountId);
-            $this->accounts->addOpenCall($accountId, RevokeSessionsCall::OPERATION);
-            $this->audit->record($actor, AuditLog::ACCOUNT_SESSIONS_REVOKED, 'account', $accountId, ['initiated_by' => $initiator->value]);
-            $pdo->commit();
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-
-        $openCalls = new OpenCalls($this->authService, $this->accounts);
-        for ($attempt = 0; $attempt < max(1, $attempts); $attempt++) {
-            $openCalls->attempt($accountId);
-            if (!$this->isOpen($accountId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private function isOpen(string $accountId): bool
-    {
-        return $this->accounts->findByPublicUserId($accountId)?->openCall(RevokeSessionsCall::OPERATION) !== null;
+        return (new SessionTermination($this->audit, $this->accounts, $this->authService))->terminate(
+            $actor,
+            $accountId,
+            RevokeSessionsCall::OPERATION,
+            AuditLog::ACCOUNT_SESSIONS_REVOKED,
+            ['initiated_by' => $initiator->value],
+            $attempts,
+            $precondition,
+        );
     }
 }

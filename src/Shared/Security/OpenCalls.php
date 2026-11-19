@@ -42,8 +42,8 @@ final class OpenCalls
 
     /**
      * Alle Aufrufe, die ein Konto offen tragen kann, in der festen Reihenfolge des Nachholens: Sperre, Sitzungswiderruf,
-     * TOTP-Zuruecksetzung (ADR 0002 Nachtrag #16). Der Widerruf (#48) steht schon hier; die Zuruecksetzung (#49) traegt
-     * ihren Handler an ihrer Stelle ein (und markiert ihn als {@see TokenBlockingCall}); sonst aendert sich nichts.
+     * TOTP-Zuruecksetzung (ADR 0002 Nachtrag #16). Widerruf (#48) und Zuruecksetzung (#49) tragen
+     * ihren Handler hier ein und markieren ihn als {@see TokenBlockingCall}.
      *
      * @return list<OpenCallHandler>
      */
@@ -52,6 +52,7 @@ final class OpenCalls
         return [
             new DisableLoginCall(),
             new RevokeSessionsCall(),
+            new ResetMfaCall(),
         ];
     }
 

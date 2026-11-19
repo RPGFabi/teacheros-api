@@ -280,6 +280,28 @@ final class AccessAdministration
     }
 
     /**
+     * Setzt das TOTP eines aktiven oder deaktivierten Kontos zurueck (Ticket #49, ADR 0002 B2 und Nachtrag #16): beendet wie der
+     * Widerruf alle Sitzungen (zuerst lokal die Sitzungsgrenze, der offene Aufruf und `account.mfa_reset` ohne Kontext, nach dem
+     * Commit G1, `mfa-reset`; {@see SessionTermination}). Scheitert G1, bleiben Zuruecksetzung und Sitzungsgrenze bestehen, der Aufruf
+     * offen und jedes Token des Kontos abgelehnt ({@see TokenBlockingCall}). Ein Konto mit MFA-Pflicht richtet TOTP danach neu ein.
+     * Regeln: {@see AccountMfaResetRules}. Der Aufrufer darf keine eigene Transaktion offen haben.
+     *
+     * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403);
+     *                        `self_mfa_reset`, `account_not_active` (409)
+     */
+    public function resetMfa(Actor $actor, string $targetId, AuthServiceClient $authService = new AuthServiceClient()): void
+    {
+        (new SessionTermination($this->audit, new AccountRepository(), $authService))->terminate(
+            $actor,
+            $targetId,
+            ResetMfaCall::OPERATION,
+            AuditLog::ACCOUNT_MFA_RESET,
+            [],
+            precondition: static fn (Account $target) => (new AccountMfaResetRules($actor->accountId))->refusal($target),
+        );
+    }
+
+    /**
      * Fuehrt $work in einer Transaktion aus (oder in der des Aufrufers). Wer die Transaktion selbst oeffnet, spiegelt nach
      * dem Commit geaenderte MFA-Pflichten an den Anmeldedienst (Ticket #15); bei einer fremden Transaktion tut das deren Besitzer.
      */

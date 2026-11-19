@@ -17,6 +17,8 @@ enum AccountAction: string
     case ResyncLogin = 'resync_login';
     /** Sitzungswiderruf durch die Verwaltung (Ticket #48): beendet alle Sitzungen eines aktiven Kontos. */
     case RevokeSessions = 'revoke_sessions';
+    /** TOTP-Zuruecksetzung durch die Verwaltung (Ticket #49): schliesst den Sitzungswiderruf ein; fuer aktive und deaktivierte Konten. */
+    case ResetMfa = 'reset_mfa';
 
     /** Das Recht, das die Aktion verlangt (ohne `accounts.view`, das die Route zusaetzlich verlangt); null beim Abgleich: dort genuegt eines der Konto-Rechte. */
     public function right(): ?string
@@ -24,6 +26,7 @@ enum AccountAction: string
         return match ($this) {
             self::Deactivate, self::Reactivate => PermissionCatalog::ACCOUNTS_DEACTIVATE,
             self::RevokeSessions => PermissionCatalog::ACCOUNTS_REVOKE_SESSIONS,
+            self::ResetMfa => PermissionCatalog::ACCOUNTS_RESET_MFA,
             self::ResyncLogin => null,
         };
     }
@@ -35,6 +38,7 @@ enum AccountAction: string
             self::Deactivate => 'self_deactivation',
             self::Reactivate => 'self_reactivation',
             self::RevokeSessions => 'self_revocation',
+            self::ResetMfa => 'self_mfa_reset',
             self::ResyncLogin => throw new \LogicException('Der Abgleich kennt keine Regel gegen sich selbst.'),
         };
     }
@@ -46,6 +50,7 @@ enum AccountAction: string
             self::Deactivate => 'Konten zu deaktivieren',
             self::Reactivate => 'Konten zu reaktivieren',
             self::RevokeSessions => 'die Sitzungen von Konten zu beenden',
+            self::ResetMfa => 'das TOTP von Konten zurückzusetzen',
             self::ResyncLogin => 'den Abgleich mit dem Anmeldedienst zu wiederholen',
         } . '.';
     }
@@ -57,6 +62,7 @@ enum AccountAction: string
             self::Deactivate => 'Sie können sich nicht selbst deaktivieren.',
             self::Reactivate => 'Sie können sich nicht selbst reaktivieren.',
             self::RevokeSessions => 'Für die eigenen Sitzungen gibt es „Mein Konto“; die Verwaltung beendet nur die Sitzungen anderer.',
+            self::ResetMfa => 'Sie können Ihr eigenes TOTP nicht über die Verwaltung zurücksetzen.',
             self::ResyncLogin => throw new \LogicException('Der Abgleich kennt keine Regel gegen sich selbst.'),
         };
     }
@@ -68,6 +74,7 @@ enum AccountAction: string
             self::Deactivate => 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht deaktivieren.',
             self::Reactivate => 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht reaktivieren.',
             self::RevokeSessions => 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen deshalb seine Sitzungen nicht beenden.',
+            self::ResetMfa => 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen deshalb sein TOTP nicht zurücksetzen.',
             self::ResyncLogin => throw new \LogicException('Der Abgleich kennt keine Regel P2.'),
         };
     }
