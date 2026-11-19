@@ -348,6 +348,30 @@ final class ClassLifecycleTest extends TestCase
         $this->assertSame([], $this->auditFor('class.updated'));
     }
 
+    /** @param array<string,mixed> $body */
+    #[DataProvider('ungueltigeEingaben')]
+    public function testBeiEinerArchiviertenKlasseGehtDieArchivPruefungVorDerEingabepruefung(array $body): void
+    {
+        $id = $this->createClass(7, '7a');
+        $this->act($id, 'archive');
+
+        $r = $this->act($id, 'update', $body);
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('class_archived', $r['json']['code']);
+    }
+
+    public function testBeiEinerArchiviertenKlasseGehtDieArchivPruefungAuchVorDemAbweichendenSchuljahr(): void
+    {
+        $other = $this->createYear('2091-08-01', '2092-07-31');
+        $id = $this->createClass(7, '7a');
+        $this->act($id, 'archive');
+
+        $r = $this->act($id, 'update', ['school_year_id' => $other, 'grade_level' => 7, 'name' => '7a']);
+
+        $this->assertSame('class_archived', $r['json']['code']);
+    }
+
     public function testArchivierenEinerSchonArchiviertenKlasseIst409(): void
     {
         $id = $this->createClass(7, '7a');

@@ -45,36 +45,68 @@ final class HttpTestApp
      */
     public function requestConcurrently(array $calls): array
     {
-        $cgi = getenv('TEST_PHP_CGI') ?: dirname(PHP_BINARY) . DIRECTORY_SEPARATOR . (PHP_OS_FAMILY === 'Windows' ? 'php-cgi.exe' : 'php-cgi');
-        $running = [];
-        foreach ($calls as $i => [$method, $uri, $env, $json]) {
-            $body = ($json ?? null) === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
-            $env = array_merge($this->env(), [
-                'REQUEST_METHOD' => $method,
-                'REQUEST_URI' => $uri,
-                'QUERY_STRING' => (string) parse_url($uri, PHP_URL_QUERY),
-                'SCRIPT_FILENAME' => $this->root . '/public/index.php',
-                'REDIRECT_STATUS' => '200',
-                'GATEWAY_INTERFACE' => 'CGI/1.1',
-                'SERVER_PROTOCOL' => 'HTTP/1.1',
-            ], $body === '' ? [] : [
-                'CONTENT_TYPE' => 'application/json',
-                'CONTENT_LENGTH' => (string) strlen($body),
-            ], $env ?? []);
-            $running[$i] = $this->start([$cgi, '-q'], $env, $body);
-        }
-        $responses = [];
-        foreach ($running as $i => $process) {
-            [, $out] = $this->finish($process);
-            [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
-            $status = 200;
-            if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
-                $status = (int) $m[1];
+        $running = array_map(fn (array $call): array => $this->startRequest(...$call), $calls);
+        return array_map($this->readResponse(...), $running);
+    }
+
+    /**
+     * Startet einen Request, wartet, bis er mit einer SQL-Anweisung an einer Sperre haengt (Text der Anweisung beginnt
+     * mit $statementPrefix), ruft dann $release auf (z. B. Commit der Transaktion des Tests, die die Sperre haelt) und
+     * liefert die Antwort. Damit laesst sich ein Rennen zwischen Pruefung und Schreiben ohne Zufall nachstellen.
+     *
+     * @param array<string,string> $env
+     * @return array{status:int, body:string, json:?array}
+     */
+    public function requestReleasedWhenBlocked(string $statementPrefix, callable $release, string $method, string $uri, array $env = [], ?array $json = null): array
+    {
+        $process = $this->startRequest($method, $uri, $env, $json);
+        $stmt = $this->pdo()->prepare('SELECT 1 FROM `information_schema`.`PROCESSLIST` WHERE `DB` = ? AND `INFO` LIKE ? AND `COMMAND` = \'Query\'');
+        $deadline = microtime(true) + 15;
+        while (microtime(true) < $deadline) {
+            $stmt->execute([$this->dbName, $statementPrefix . '%']);
+            if ($stmt->fetchColumn() !== false) {
+                break;
             }
-            $json = json_decode($body, true);
-            $responses[$i] = ['status' => $status, 'body' => $body, 'json' => is_array($json) ? $json : null];
+            usleep(50_000);
         }
-        return $responses;
+        $release();
+        return $this->readResponse($process);
+    }
+
+    /** @return array{resource, array<int,resource>} */
+    private function startRequest(string $method, string $uri, array $env = [], ?array $json = null): array
+    {
+        $cgi = getenv('TEST_PHP_CGI') ?: dirname(PHP_BINARY) . DIRECTORY_SEPARATOR . (PHP_OS_FAMILY === 'Windows' ? 'php-cgi.exe' : 'php-cgi');
+        $body = $json === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
+        $env = array_merge($this->env(), [
+            'REQUEST_METHOD' => $method,
+            'REQUEST_URI' => $uri,
+            'QUERY_STRING' => (string) parse_url($uri, PHP_URL_QUERY),
+            'SCRIPT_FILENAME' => $this->root . '/public/index.php',
+            'REDIRECT_STATUS' => '200',
+            'GATEWAY_INTERFACE' => 'CGI/1.1',
+            'SERVER_PROTOCOL' => 'HTTP/1.1',
+        ], $body === '' ? [] : [
+            'CONTENT_TYPE' => 'application/json',
+            'CONTENT_LENGTH' => (string) strlen($body),
+        ], $env);
+        return $this->start([$cgi, '-q'], $env, $body);
+    }
+
+    /**
+     * @param array{resource, array<int,resource>} $process
+     * @return array{status:int, body:string, json:?array}
+     */
+    private function readResponse(array $process): array
+    {
+        [, $out] = $this->finish($process);
+        [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
+        $status = 200;
+        if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
+            $status = (int) $m[1];
+        }
+        $json = json_decode($body, true);
+        return ['status' => $status, 'body' => $body, 'json' => is_array($json) ? $json : null];
     }
 
     public function migrate(): void

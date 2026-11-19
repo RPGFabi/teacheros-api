@@ -8,6 +8,7 @@ use Hoelzle\Core\Database\DB;
 use TeacherOS\Modules\SchoolYears\SchoolYears;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
+use TeacherOS\Shared\Database\MysqlError;
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Uuid;
 
@@ -20,8 +21,6 @@ use TeacherOS\Shared\Uuid;
  */
 final class Classes
 {
-    private const MYSQL_DUPLICATE_KEY = 1062;
-
     public function __construct(
         private readonly ClassRepository $repository = new ClassRepository(),
         private readonly SchoolYears $schoolYears = new SchoolYears(),
@@ -93,23 +92,26 @@ final class Classes
     }
 
     /**
-     * Aendert Klassenstufe und Bezeichnung nach denselben Regeln wie beim Anlegen. Das Schuljahr ist nicht aenderbar:
-     * ein abweichendes `$claimedSchoolYearId` wird abgelehnt. Eine archivierte Klasse ist schreibgeschuetzt.
+     * Aendert Klassenstufe und Bezeichnung nach denselben Regeln wie beim Anlegen ({@see ClassChange}). Die Eingabe kommt
+     * roh und wird erst geprueft, wenn die Klasse gesperrt und als aenderbar erkannt ist: unbekannt (404) und archiviert
+     * (409) gehen der Eingabepruefung (400) vor. Das Schuljahr ist nicht aenderbar: ein abweichendes
+     * `$claimedSchoolYearId` wird abgelehnt. Eine archivierte Klasse ist schreibgeschuetzt.
      *
      * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
      * @throws CodedException `class_not_found` (404), `class_archived` (409), `class_name_taken` (409), `invalid_request` (400)
      */
-    public function update(Actor $actor, string $id, ClassChange $change, mixed $claimedSchoolYearId = null): array
+    public function update(Actor $actor, string $id, mixed $gradeLevel, mixed $name, mixed $claimedSchoolYearId = null): array
     {
-        $before = null;
-        $this->inTransaction(function () use ($id, $change, $actor, $claimedSchoolYearId, &$before): void {
+        $before = $change = null;
+        $this->inTransaction(function () use ($id, $gradeLevel, $name, $actor, $claimedSchoolYearId, &$before, &$change): void {
             $before = $this->lockedClass($id);
-            if ($claimedSchoolYearId !== null && $claimedSchoolYearId !== $before['school_year_id']) {
-                throw new CodedException('invalid_request', 400, 'Das Schuljahr einer Klasse lässt sich nicht ändern.');
-            }
             if ($before['archived']) {
                 throw new CodedException('class_archived', 409, 'Die Klasse ist archiviert und kann nicht geändert werden. Bitte zuerst wiederherstellen.');
             }
+            if ($claimedSchoolYearId !== null && $claimedSchoolYearId !== $before['school_year_id']) {
+                throw new CodedException('invalid_request', 400, 'Das Schuljahr einer Klasse lässt sich nicht ändern.');
+            }
+            $change = ClassChange::fromInput($gradeLevel, $name);
             $this->repository->update($id, $change);
             $this->audit->record($actor, AuditLog::CLASS_UPDATED, 'class', $id, ['old_name' => $before['name'], 'name' => $change->name]);
         });
@@ -204,10 +206,12 @@ final class Classes
             $pdo->commit();
         } catch (\PDOException $e) {
             $pdo->rollBack();
-            if (($e->errorInfo[1] ?? null) === self::MYSQL_DUPLICATE_KEY) {
-                throw new CodedException('class_name_taken', 409, 'Im Schuljahr gibt es bereits eine Klasse mit dieser Bezeichnung.');
-            }
-            throw $e;
+            // Zwischen Pruefung und Schreiben kann das Schuljahr geloescht worden sein: dann gibt es es nicht (mehr).
+            throw match (MysqlError::of($e)) {
+                MysqlError::DUPLICATE_ENTRY => new CodedException('class_name_taken', 409, 'Im Schuljahr gibt es bereits eine Klasse mit dieser Bezeichnung.'),
+                MysqlError::NO_REFERENCED_ROW => new CodedException('school_year_not_found', 404, 'Das Schuljahr gibt es nicht.'),
+                default => $e,
+            };
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;

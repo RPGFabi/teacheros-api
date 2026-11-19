@@ -47,8 +47,13 @@ final class ClassesController
 
     public static function update(Request $request, Response $response): void
     {
-        $change = ClassChange::fromInput($request->getBody('grade_level'), $request->getBody('name'));
-        $class = (new Classes())->update(AuthenticationMiddleware::actor(), (string) $request->getParam('id'), $change, $request->getBody('school_year_id'));
+        $class = (new Classes())->update(
+            AuthenticationMiddleware::actor(),
+            (string) $request->getParam('id'),
+            $request->getBody('grade_level'),
+            $request->getBody('name'),
+            $request->getBody('school_year_id'),
+        );
         $response->json(['class' => $class]);
     }
 

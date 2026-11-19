@@ -229,6 +229,29 @@ final class ClassesEndpointsTest extends TestCase
         $this->assertSame("7\u{00E4}", $this->app->classes()[0]['name']);
     }
 
+    public function testWirdDasSchuljahrWaehrendDesAnlegensGeloeschtKommt404StattEinesServerfehlers(): void
+    {
+        // Das Schuljahr ist beim Pruefen noch da; der Test haelt seine Loeschung unbestaetigt, sodass das Anlegen der Klasse
+        // am Fremdschluessel haengt (MySQL 1452), und bestaetigt sie erst dann.
+        $pdo = $this->app->pdo();
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM `school_years` WHERE `id` = ?')->execute([$this->year]);
+
+        $r = $this->app->requestReleasedWhenBlocked(
+            'INSERT INTO `classes`',
+            static fn () => $pdo->commit(),
+            'POST',
+            self::URI,
+            $this->headers(self::ADMIN),
+            ['school_year_id' => $this->year, 'grade_level' => 7, 'name' => '7a'],
+        );
+
+        $this->assertSame(404, $r['status'], $r['body']);
+        $this->assertSame('school_year_not_found', $r['json']['code']);
+        $this->assertSame([], $this->app->classes());
+        $this->assertNotContains('class.created', array_column($this->app->auditLog(), 'action'));
+    }
+
     public function testGleicheBezeichnungInEinemAnderenSchuljahrIstErlaubt(): void
     {
         $other = $this->createYear('2091-08-01', '2092-07-31');
