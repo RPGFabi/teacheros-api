@@ -122,7 +122,7 @@ final class RoleAssignmentTest extends TestCase
 
         $this->assertSame(200, $r['status']);
         $this->assertSame(
-            ['id' => self::TARGET, 'email' => 'ziel@schule.test', 'login_name' => 'ziel', 'status' => 'active', 'inactive_since' => null, 'inactive_reason' => null, 'login_sync_pending' => false, 'mfa_required' => false],
+            ['id' => self::TARGET, 'email' => 'ziel@schule.test', 'login_name' => 'ziel', 'status' => 'active', 'inactive_since' => null, 'inactive_reason' => null, 'login_sync_pending' => false, 'login_sync_error' => null, 'mfa_required' => false],
             $r['json']['account'],
         );
         $this->assertCount(1, $r['json']['roles']);
