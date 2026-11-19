@@ -20,6 +20,7 @@ final class PermissionCatalog
     public const ROLES_ASSIGN = 'roles.assign';
     public const PERMISSIONS_ASSIGN = 'permissions.assign';
     public const ACCOUNTS_DEACTIVATE = 'accounts.deactivate';
+    public const ACCOUNTS_REVOKE_SESSIONS = 'accounts.revoke_sessions';
 
     /**
      * Die drei Verwaltungsrechte (ADR 0002 B4). Wer eines hat, darf Rollen, Rechte-Katalog und
@@ -30,9 +31,9 @@ final class PermissionCatalog
     /**
      * Die Rechte fuer Aktionen am Konto selbst, die lokal wirken und den Anmeldedienst unterrichten (ADR 0002 Nachtrag
      * #16, Ticket #47). Wer eines hat (und `accounts.view`), darf "Abgleich wiederholen", der alle offenen Aufrufe eines
-     * Kontos nachholt. Widerruf (#48, `accounts.revoke_sessions`) und Zuruecksetzung (#49, `accounts.reset_mfa`) tragen ihr Recht hier ein.
+     * Kontos nachholt. Der Widerruf (#48) hat `accounts.revoke_sessions`; die Zuruecksetzung (#49, `accounts.reset_mfa`) traegt ihr Recht hier ein.
      */
-    public const ACCOUNT_ACTION_RIGHTS = [self::ACCOUNTS_DEACTIVATE];
+    public const ACCOUNT_ACTION_RIGHTS = [self::ACCOUNTS_DEACTIVATE, self::ACCOUNTS_REVOKE_SESSIONS];
 
     /**
      * Wer ein Kontodetail lesen darf, zusaetzlich zu `accounts.view` (ADR 0002 B4, Review #12): eines der drei
@@ -54,6 +55,7 @@ final class PermissionCatalog
             ['key' => self::ACCOUNTS_VIEW, 'name' => 'Konten ansehen', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ACCOUNTS_INVITE, 'name' => 'Konten einladen', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ACCOUNTS_DEACTIVATE, 'name' => 'Konten deaktivieren und reaktivieren', 'group' => self::GROUP_ACCOUNTS],
+            ['key' => self::ACCOUNTS_REVOKE_SESSIONS, 'name' => 'Sitzungen von Konten beenden', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ROLES_MANAGE, 'name' => 'Rollen verwalten', 'group' => self::GROUP_ROLES],
             ['key' => self::ROLES_ASSIGN, 'name' => 'Rollen vergeben und entziehen', 'group' => self::GROUP_ROLES],
             ['key' => self::PERMISSIONS_ASSIGN, 'name' => 'Einzelrechte vergeben und entziehen', 'group' => self::GROUP_ROLES],

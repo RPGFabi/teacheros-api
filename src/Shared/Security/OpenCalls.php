@@ -42,8 +42,8 @@ final class OpenCalls
 
     /**
      * Alle Aufrufe, die ein Konto offen tragen kann, in der festen Reihenfolge des Nachholens: Sperre, Sitzungswiderruf,
-     * TOTP-Zuruecksetzung (ADR 0002 Nachtrag #16). Widerruf (#48) und Zuruecksetzung (#49) tragen ihren Handler hier an
-     * ihrer Stelle ein; sonst aendert sich nichts.
+     * TOTP-Zuruecksetzung (ADR 0002 Nachtrag #16). Der Widerruf (#48) steht schon hier; die Zuruecksetzung (#49) traegt
+     * ihren Handler an ihrer Stelle ein (und markiert ihn als {@see TokenBlockingCall}); sonst aendert sich nichts.
      *
      * @return list<OpenCallHandler>
      */
@@ -51,6 +51,7 @@ final class OpenCalls
     {
         return [
             new DisableLoginCall(),
+            new RevokeSessionsCall(),
         ];
     }
 
@@ -65,6 +66,33 @@ final class OpenCalls
         $position = array_flip(array_map(static fn (OpenCallHandler $h) => $h->operation(), $this->handlers));
         usort($calls, static fn (OpenCall $a, OpenCall $b) => ($position[$a->operation] ?? PHP_INT_MAX) <=> ($position[$b->operation] ?? PHP_INT_MAX));
         return $calls;
+    }
+
+    /**
+     * Sperrt ein offener Aufruf dieses Kontos jedes Token ({@see TokenBlockingCall})? Offene Aufrufe ohne Handler oder
+     * hinfaellige Aufrufe sperren nicht.
+     */
+    public function blocksTokens(Account $account): bool
+    {
+        foreach ($this->handlers as $handler) {
+            if ($handler instanceof TokenBlockingCall && $account->openCall($handler->operation()) !== null && !$handler->isObsolete($account)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Der Versuch beim ersten Request mit einem neuen Token ({@see AuthenticationMiddleware}, ADR 0002 Nachtrag #16, Ticket #48):
+     * holt die offenen Aufrufe des Kontos nach (wie {@see self::attempt()}) und liest das Konto danach frisch. Gelingt es, sperrt
+     * {@see self::blocksTokens()} nicht mehr und das Konto ist sofort nutzbar. Wer es nutzt, darf keine Transaktion offen haben.
+     *
+     * @return Account|null das Konto nach dem Versuch; null, wenn es nicht mehr existiert
+     */
+    public function releaseTokens(string $accountId): ?Account
+    {
+        $this->attempt($accountId);
+        return $this->accounts->findByPublicUserId($accountId);
     }
 
     /**

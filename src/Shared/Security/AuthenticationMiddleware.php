@@ -90,6 +90,17 @@ final class AuthenticationMiddleware
             $response->json(['error' => 'Session revoked', 'code' => 'session_revoked'], 401);
             return false;
         }
+        // Solange ein Widerruf (oder eine TOTP-Zuruecksetzung) beim Anmeldedienst offen ist, leben dessen Refresh-Tokens und
+        // koennten neue Tokens erzeugen: jedes Token des Kontos ist abgelehnt. Der erste Request mit einem Token nach der
+        // Sitzungsgrenze holt die offenen Aufrufe nach; gelingt das, ist das Konto sofort nutzbar (Nachtrag #16, Ticket #48).
+        $openCalls = new OpenCalls();
+        if ($openCalls->blocksTokens($account)) {
+            $account = $openCalls->releaseTokens($account->publicUserId) ?? $account;
+            if (!$account->isActive() || $account->revokes($token->issuedAt) || $openCalls->blocksTokens($account)) {
+                $response->json(['error' => 'Session revoked', 'code' => 'session_revoked'], 401);
+                return false;
+            }
+        }
 
         self::$current = new AuthenticatedSession($account, $token);
         return true;

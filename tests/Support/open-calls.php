@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-// Test-Hilfsskript (Ticket #47): holt die offenen Aufrufe eines Kontos mit eigenen Handlern nach. Widerruf und Zuruecksetzung
-// gibt es noch nicht; so lassen sich Menge, feste Reihenfolge und Ablehnung belegen, wie sie dann gelten.
+// Test-Hilfsskript (Ticket #47): holt die offenen Aufrufe eines Kontos mit eigenen Handlern nach. Der Widerruf gibt es seit #48, die Zuruecksetzung
+// noch nicht; so lassen sich Menge, feste Reihenfolge und Ablehnung belegen, wie sie dann gelten.
 //   php tests/Support/open-calls.php <public_user_id> '<json>'
 // <json> ist die Handler-Liste in der Reihenfolge des Nachholens: [{"op":"a","outcome":"ok"}, ...]. Ergebnis `outcome`:
 // `ok`, `reject:<code>:<status>`, `unavailable` oder `obsolete`. Ausgabe: {"calls":[...],"thrown":null|{"code":...,"status":...}}.

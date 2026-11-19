@@ -83,6 +83,16 @@ final class AccountAccessController
     }
 
     /**
+     * Sitzungswiderruf durch die Verwaltung (Ticket #48): beendet alle Sitzungen eines aktiven Kontos. Scheitert der Aufruf an
+     * den Anmeldedienst, bleibt der Widerruf bestehen (200); die Lesesicht nennt ihn in `account.open_calls`, und jedes Token des
+     * Kontos wird abgelehnt, bis er nachgeholt ist. Fehler: 403 `forbidden`/`permission_not_held`, 409 `self_revocation`/`account_not_active`.
+     */
+    public static function revokeSessions(Request $request, Response $response): void
+    {
+        self::change($request, $response, fn (Actor $actor, string $accountId) => (new AccessAdministration())->revokeSessions($actor, $accountId));
+    }
+
+    /**
      * "Abgleich wiederholen" (Tickets #42, #47): holt alle offenen Aufrufe in fester Reihenfolge nach (heute die Sperre,
      * `disable-login`). Kein Audit-Eintrag. Fehler: 409 `sync_not_pending`, 502 `auth_unavailable`, fachliche Ablehnung mit
      * Status und Code des Anmeldedienstes (der Aufruf bleibt offen, der Code wird festgehalten). Antwort: die aktuelle Lesesicht.

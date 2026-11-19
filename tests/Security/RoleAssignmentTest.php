@@ -149,7 +149,7 @@ final class RoleAssignmentTest extends TestCase
         $r = $this->access(self::ADMIN);
 
         $perms = $this->permissionsByKey($r);
-        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'roles.manage', 'roles.assign', 'permissions.assign'], array_keys($perms));
+        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'roles.manage', 'roles.assign', 'permissions.assign'], array_keys($perms));
         foreach ($perms as $p) {
             $this->assertTrue($p['effective']);
             $this->assertSame(['role'], array_column($p['sources'], 'kind'));

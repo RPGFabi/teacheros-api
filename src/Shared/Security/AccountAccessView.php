@@ -126,7 +126,7 @@ final class AccountAccessView
 
     /**
      * Die Aktionen am Konto selbst fuer den Betrachter ({@see AccountAction}), je mit `allowed`, bei Sperre `code` und
-     * `reason` aus den Regeln: `deactivate` (Ticket #41, {@see AccountDeactivationRules}); `resync_login` ("Abgleich wiederholen",
+     * `reason` aus den Regeln: `deactivate` (Ticket #41, {@see AccountDeactivationRules}); `revoke_sessions` (Ticket #48, {@see AccountRevocationRules}); `resync_login` ("Abgleich wiederholen",
      * Tickets #42, #47) nur solange ein Aufruf offen ist, erlaubt mit einem der Konto-Rechte ({@see PermissionCatalog::ACCOUNT_ACTION_RIGHTS}); `reactivate` (Ticket #43,
      * {@see AccountReactivationRules}) nur bei deaktivierten Konten.
      *
@@ -135,6 +135,7 @@ final class AccountAccessView
     private function accountActions(Account $account, ?string $viewerId): array
     {
         $actions = [$this->accountAction(AccountAction::Deactivate, (new AccountDeactivationRules($viewerId))->refusal($account))];
+        $actions[] = $this->accountAction(AccountAction::RevokeSessions, (new AccountRevocationRules($viewerId))->refusal($account));
         if ($account->openCalls !== []) {
             $actions[] = $this->accountAction(AccountAction::ResyncLogin, (new AccountActionRules($viewerId, AccountAction::ResyncLogin))->rightRefusal());
         }

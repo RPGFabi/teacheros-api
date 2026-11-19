@@ -130,6 +130,17 @@ final class AccountRepository
     }
 
     /**
+     * Setzt die Sitzungsgrenze `sessions_valid_after` auf jetzt (ADR 0002 B2, Sitzungswiderruf, Ticket #48): Tokens mit `iat`
+     * bis zu dieser Sekunde sind widerrufen. Den offenen Aufruf ({@see self::addOpenCall()}) traegt der Aufrufer in derselben
+     * Transaktion ein; er prueft auch die Regeln und sperrt.
+     */
+    public function revokeSessions(string $publicUserId): void
+    {
+        DB::getInstance()->prepare('UPDATE `accounts` SET `sessions_valid_after` = CURRENT_TIMESTAMP WHERE `public_user_id` = :id')
+            ->execute(['id' => $publicUserId]);
+    }
+
+    /**
      * Reaktiviert ein deaktiviertes Konto: Status `active`, Grund, `inactive_since` und der offene Aufruf der Sperre entfallen.
      * `sessions_valid_after` bleibt, alte Tokens bleiben ungueltig (ADR 0002 B2). Der Aufrufer prueft Regeln, hat den
      * Anmeldedienst unterrichtet und sperrt in seiner Transaktion.

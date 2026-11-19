@@ -16,7 +16,7 @@ declare(strict_types=1);
  * nacheinander, daher genuegt eine einfache Datei.
  *
  * Steuerung (nur fuer Tests):
- *   POST /__stub/script  {"invite"|"delete"|"disable-login"|"enable-login"|"mfa-requirement":[{"status":500,"body":{...},"delay":1.5,"raw":"kein JSON"}]}  haengt Antworten an; je Aufruf wird eine verbraucht
+ *   POST /__stub/script  {"invite"|"delete"|"disable-login"|"enable-login"|"mfa-requirement"|"revoke-sessions":[{"status":500,"body":{...},"delay":1.5,"raw":"kein JSON"}]}  haengt Antworten an; je Aufruf wird eine verbraucht
  *   GET  /__stub/calls   aufgezeichnete Aufrufe
  */
 
@@ -28,7 +28,7 @@ $maxAge = 300;
 $load = static function () use ($statePath): array {
     $raw = is_file($statePath) ? file_get_contents($statePath) : false;
     $state = $raw === false ? [] : (json_decode($raw, true) ?: []);
-    return $state + ['calls' => [], 'script' => ['invite' => [], 'delete' => [], 'disable-login' => [], 'enable-login' => [], 'mfa-requirement' => []], 'invited' => [], 'nonces' => []];
+    return $state + ['calls' => [], 'script' => ['invite' => [], 'delete' => [], 'disable-login' => [], 'enable-login' => [], 'mfa-requirement' => [], 'revoke-sessions' => []], 'invited' => [], 'nonces' => []];
 };
 $save = static function (array $state) use ($statePath): void {
     file_put_contents($statePath, json_encode($state));
@@ -60,7 +60,7 @@ if ($path === '/__stub/calls') {
     $reply(200, ['calls' => $state['calls']]);
 }
 
-$routes = ['/internal/users/invite' => 'invite', '/internal/users/delete' => 'delete', '/internal/users/disable-login' => 'disable-login', '/internal/users/enable-login' => 'enable-login', '/internal/users/mfa-requirement' => 'mfa-requirement'];
+$routes = ['/internal/users/invite' => 'invite', '/internal/users/delete' => 'delete', '/internal/users/disable-login' => 'disable-login', '/internal/users/enable-login' => 'enable-login', '/internal/users/mfa-requirement' => 'mfa-requirement', '/internal/users/revoke-sessions' => 'revoke-sessions'];
 if ($method !== 'POST' || !isset($routes[$path])) {
     $reply(404, ['error' => 'Not found']);
 }
@@ -127,6 +127,11 @@ if ($kind === 'invite') {
 }
 
 if ($kind === 'mfa-requirement') { // wie der echte Dienst (G2): idempotent 200 mit der Zahl der Konten
+    $save($state);
+    $reply(200, ['ok' => true, 'affected' => count((array) ($payload['public_user_ids'] ?? []))]);
+}
+
+if ($kind === 'revoke-sessions') { // wie der echte Dienst (G3): idempotent 200 mit der Zahl der Konten
     $save($state);
     $reply(200, ['ok' => true, 'affected' => count((array) ($payload['public_user_ids'] ?? []))]);
 }

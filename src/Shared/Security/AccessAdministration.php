@@ -260,6 +260,26 @@ final class AccessAdministration
     }
 
     /**
+     * Beendet alle Sitzungen eines aktiven Kontos auf Veranlassung der Verwaltung (Ticket #48, ADR 0002 B2 und Nachtrag #16):
+     * zuerst lokal die Sitzungsgrenze, der offene Aufruf und `account.sessions_revoked` (`initiated_by: admin`), nach dem
+     * Commit G3 (`revoke-sessions`, {@see SessionRevocation}). Scheitert G3, bleibt der Widerruf bestehen, der Aufruf offen und
+     * jedes Token des Kontos abgelehnt ({@see TokenBlockingCall}); die Lesesicht nennt ihn in `account.open_calls`.
+     * Regeln: {@see AccountRevocationRules}. Der Aufrufer darf keine eigene Transaktion offen haben.
+     *
+     * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403);
+     *                        `self_revocation`, `account_not_active` (409)
+     */
+    public function revokeSessions(Actor $actor, string $targetId, AuthServiceClient $authService = new AuthServiceClient()): void
+    {
+        (new SessionRevocation($this->audit, new AccountRepository(), $authService))->revoke(
+            $actor,
+            $targetId,
+            RevocationInitiator::Administration,
+            precondition: static fn (Account $target) => (new AccountRevocationRules($actor->accountId))->refusal($target),
+        );
+    }
+
+    /**
      * Fuehrt $work in einer Transaktion aus (oder in der des Aufrufers). Wer die Transaktion selbst oeffnet, spiegelt nach
      * dem Commit geaenderte MFA-Pflichten an den Anmeldedienst (Ticket #15); bei einer fremden Transaktion tut das deren Besitzer.
      */

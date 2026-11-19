@@ -81,6 +81,8 @@ final class AppBootstrap
         $resyncer = [...$authenticated, RequirePermission::forAny(PermissionCatalog::ACCOUNT_ACTION_RIGHTS), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)];
         $router->post('/api/accounts/:id/resync-login', [AccountAccessController::class, 'resyncLogin'], $resyncer);
         $router->post('/api/accounts/:id/reactivate', [AccountAccessController::class, 'reactivate'], $deactivator);
+        // Sitzungswiderruf durch die Verwaltung (Ticket #48): eigenes Recht, dazu accounts.view wegen der Lesesicht als Antwort.
+        $router->post('/api/accounts/:id/revoke-sessions', [AccountAccessController::class, 'revokeSessions'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_REVOKE_SESSIONS), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
 
         // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.
         $permissionAssigner = [...$authenticated, RequirePermission::for(PermissionCatalog::PERMISSIONS_ASSIGN)];
