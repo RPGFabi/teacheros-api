@@ -271,6 +271,14 @@ Der `AccessAdministration`-Service ist der **einzige** Weg zu `UserPermissionSer
 
 Eine Modulfreigabe gewährt selbst keinen Zugriff auf Objekte (17.12). Die Freigaben liegen lokal, damit ein Ausfall der Control Plane den Betrieb nicht stoppt.
 
+**Nachtrag (Umsetzung, Ticket #13):**
+- **Modulverzeichnis:** `ModuleCatalog` mit den Kennungen aus Source of Truth 4.5 (`core`, `observe`, `grade`, `class`, `attendance`, `connect`, `forms`, `finance`, `planner`, `substitute`). Ein Modul ohne Eintrag gibt es nicht; eine Route mit unbekanntem Modul scheitert beim Start (`LogicException`). Alle Module hängen nur von `core` ab, das immer aktiv ist; eine weitergehende Abhängigkeitsprüfung kommt mit dem ersten Modul, das eine braucht.
+- **Speicherung:** Tabelle `module_entitlements`, nur anfügen (`module_id`, `enabled`, `valid_from` UTC, `recorded_at`). Gültig ist je Modul die Version mit dem spätesten `valid_from` ≤ jetzt (bei Gleichstand die zuletzt angelegte); ohne Version ist ein Modul nicht freigegeben. `core` hat nie eine Zeile. Ein Gültigkeitsbeginn in der Vergangenheit wird abgelehnt (`valid_from_in_past`), damit frühere Ergebnisse reproduzierbar bleiben; eine Änderung ohne Wirkung ebenso (`already_enabled`/`already_disabled`).
+- **Wer setzt sie:** Bis zur Control Plane der Betreiber per CLI `bin/module.php` (Source of Truth 4.5: „zunächst durch die Administratorin/den Administrator der Installation“), nicht die Schule; es gibt dafür keinen API-Endpunkt und kein Recht. Jede Änderung schreibt in derselben Transaktion einen Audit-Eintrag `module.enabled`/`module.disabled` (Akteur `cli`, Objekt `module`/Kennung, Kontext `valid_from`).
+- **Durchsetzung:** Fachrouten bauen ihre Middleware mit `ModuleGate::route($modul, [RequirePermission::…])`: Anmeldung → Modulfreigabe → Rechte. Ohne Anmeldung bleibt es `401`; danach antwortet ein inaktives Modul `403 {"code": "module_disabled", "module": "…"}` unabhängig von den Rechten, ein aktives Modul ohne Recht weiter `403 forbidden`. Alle Routen bis M0 gehören zu `core`.
+- **Web:** `GET /api/me` liefert `modules` (aktive Module in Katalogreihenfolge, immer mit `core`). Menüpunkte tragen ihr Modul; ein inaktives Modul ist ausgeblendet. Das Ausblenden ersetzt die Prüfung der API nicht.
+- **Tests:** Solange es keine echte Fachroute gibt, lädt die API bei `APP_ENV=test` zusätzliche Routen aus `TEST_ROUTES` (`tests/Support/module-probe-routes.php`, Probe-Route des Moduls `observe`). Außerhalb der Testumgebung ist das wirkungslos.
+
 ### B6 – Objekt-, Zeit- und Zuordnungs-Scopes (P4)
 
 Das Interface `AccessPolicy` hat eine Implementierung pro Fachmodul:

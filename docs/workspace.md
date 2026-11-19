@@ -57,6 +57,21 @@ php bin/invite-first-admin.php --email=admin@schule.example [--login-name=name] 
 
 Tests: HTTP und CLI laufen gegen den **Auth-Stub** (`tests/Support/AuthStub.php`, `php -S` an der Netzwerkgrenze, über `AUTH_SERVICE_URL` erreichbar). Er prüft die Signatur wie der echte Dienst, zeichnet Aufrufe auf (`calls()`, `inviteCalls()`) und antwortet nach Skript (`script('invite', ['status' => 500])`, `['delay' => 2.0]` für Timeouts (der API-Timeout im Test ist 0,5 s; `calls()` danach abwarten, `php -S` bedient nacheinander), `['raw' => '<html>']` für eine unlesbare Antwort, `['body' => [...]]` für `already_active`, `username`, `invite_code`, `expires_at`, fachliche Fehler mit `code`). `AuthStub::env()` liefert die Umgebung für `HttpTestApp::cli()`. E2E gegen eine echte Wegwerf-Instanz: `AUTH_SERVICE_PATH=... tests/e2e/first-admin-invite.sh`.
 
+## Modulfreigaben (Ticket #13)
+
+Welche Module an der Schulinstanz laufen, legt der Betreiber per CLI fest (bis es die Control Plane gibt); `core` ist immer aktiv:
+
+```bash
+php bin/module.php list                                   # Module mit Zustand jetzt
+php bin/module.php enable observe [--valid-from=2026-12-01T00:00:00+01:00]
+php bin/module.php disable observe [--valid-from=...]
+php bin/module.php history observe                        # alle Versionen
+```
+
+- Ohne `--valid-from` gilt die Änderung sofort; ein Beginn in der Vergangenheit wird abgelehnt. Jede Änderung ist eine neue Version (nichts wird überschrieben) mit Audit-Eintrag `module.enabled`/`module.disabled` (Akteur `cli`).
+- Exit-Codes: 0 ok, 2 Aufruf falsch, 3 fachlich abgelehnt (`unknown_module`, `core_always_active`, `valid_from_in_past`, `already_enabled`, `already_disabled`).
+- Fachrouten: `ModuleGate::route('observe', [RequirePermission::for(...)])`; ein inaktives Modul antwortet `403 module_disabled` vor jeder Rechteprüfung. `GET /api/me` liefert `modules`, das Web blendet Menüpunkte inaktiver Module aus.
+
 ## Konten im Web (Ticket #26)
 
 Schuladmins (Recht `accounts.view` bzw. `accounts.invite`, nicht die Rolle) verwalten Einladungen über die API; alle Endpunkte brauchen ein gültiges Token. Fehler mit Code antworten als `{"error": "...", "code": "..."}` (zentral im `ApiRouter`, nicht pro Endpunkt).
