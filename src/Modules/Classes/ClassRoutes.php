@@ -22,6 +22,12 @@ final class ClassRoutes
         $view = ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::CLASSES_VIEW)]);
         $router->get($path, [ClassesController::class, 'index'], $view);
         $router->get($path . '/school-years', [ClassesController::class, 'schoolYears'], $view);
-        $router->post($path, [ClassesController::class, 'create'], ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::CLASSES_MANAGE)]));
+        $router->get($path . '/selectable', [ClassesController::class, 'selectable'], $view);
+        $manage = ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::CLASSES_MANAGE)]);
+        $router->post($path, [ClassesController::class, 'create'], $manage);
+        $router->post($path . '/:id/update', [ClassesController::class, 'update'], $manage);
+        $router->post($path . '/:id/archive', [ClassesController::class, 'archive'], $manage);
+        $router->post($path . '/:id/restore', [ClassesController::class, 'restore'], $manage);
+        $router->post($path . '/:id/delete', [ClassesController::class, 'delete'], $manage);
     }
 }

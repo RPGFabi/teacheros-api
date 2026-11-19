@@ -46,6 +46,18 @@ final class AuditLog
     /** Eine Klasse wurde angelegt (Ticket #55); Objekt: Kennung der Klasse, Kontext: name, grade_level, school_year_id. */
     public const CLASS_CREATED = 'class.created';
 
+    /** Klassenstufe oder Bezeichnung einer Klasse geaendert (Ticket #57); Kontext: name, grade_level, school_year_id, previous_name, previous_grade_level. */
+    public const CLASS_UPDATED = 'class.updated';
+
+    /** Eine Klasse wurde archiviert (Ticket #57); Kontext: name, grade_level, school_year_id. */
+    public const CLASS_ARCHIVED = 'class.archived';
+
+    /** Eine archivierte Klasse wurde wiederhergestellt (Ticket #57); Kontext: name, grade_level, school_year_id. */
+    public const CLASS_RESTORED = 'class.restored';
+
+    /** Eine unverknuepfte Klasse wurde endgueltig geloescht (Ticket #57); Kontext: name, grade_level, school_year_id. */
+    public const CLASS_DELETED = 'class.deleted';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {

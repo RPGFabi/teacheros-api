@@ -242,8 +242,33 @@ Zweites Stammdaten-Ticket (Spec #17; Glossar: Klasse, Klassenstufe). Neue Rechte
 - **Speicherung:** Tabelle `classes` (Migration 0014: `id` UUID, `school_year_id`, `grade_level`, `name`, `name_key` = kleingeschriebene Bezeichnung, binär verglichen; eindeutiger Schlüssel `(school_year_id, name_key)` sichert die Eindeutigkeit auch bei gleichzeitigen Anfragen). Anlegen und Audit laufen in einer Transaktion.
 - **Audit:** `class.created` (Objekt `class`, Objekt-ID = Kennung, Kontext `name`, `grade_level`, `school_year_id`).
 - Code: `src/Modules/Classes/` (`ClassRoutes`, `ClassesController`, `Classes`, `ClassRepository`, `ClassInput`); Schuljahre und Status kommen aus `SchoolYears` (neu: `find`), Kennungen aus `Shared\Uuid`. Tests: `tests/Classes/`; die Routen hängt `tests/Support/module-probe-routes.php` zusätzlich unter `observe` (`/api/test/observe-classes`). Der Test-Harness (`HttpTestApp`) setzt jetzt `QUERY_STRING` aus der URI.
-- Archivieren, Bearbeiten und Löschen von Klassen folgen mit #56/#57.
+- Bearbeiten, Archivieren, Wiederherstellen und Löschen von Klassen: Abschnitt „Klassen verwalten (Ticket #57)“.
 - Web: Seite „Klassen“ (`src/classes/`, Menüpunkt nur mit `classes.view`, Formular nur mit `classes.manage`, Schuljahr-Auswahl) und der Abschnitt „Klassen“ in der Detailansicht eines Schuljahres.
+
+## Klassen verwalten (Ticket #57)
+
+Viertes Stammdaten-Ticket (Spec #17; Glossar: Klasse, Archivierung). Alle Aktionen brauchen `classes.manage`, laufen über `ModuleGate::route()` (Modulprüfung vor dem Recht) und sind wegen CORS (nur GET/POST) als `POST /api/classes/:id/<aktion>` gebaut. Jede Klassenantwort trägt jetzt zusätzlich `archived` (bool): `{id, grade_level, name, archived, school_year: {id, name}}`.
+
+| Endpunkt | Recht | Body / Query | Antwort |
+|---|---|---|---|
+| `POST /api/classes/:id/update` | `classes.manage` | `{grade_level, name}` (optional `school_year_id`, nur zur Kontrolle) | `200 {"class": {…}}` |
+| `POST /api/classes/:id/archive` | `classes.manage` | – | `200 {"class": {…, "archived": true}}` |
+| `POST /api/classes/:id/restore` | `classes.manage` | – | `200 {"class": {…, "archived": false}}` |
+| `POST /api/classes/:id/delete` | `classes.manage` | – | `200 {"deleted": true, "id": "<Kennung>"}` |
+| `GET /api/classes?school_year_id=…&include_archived=1` | `classes.view` | Filter `include_archived` (`1` oder `true`) | wie bisher; **ohne den Filter keine archivierten Klassen** |
+| `GET /api/classes/selectable[?school_year_id=…]` | `classes.view` | optional Schuljahr | `200 {"classes": [...]}`: nur wählbare (nicht archivierte) Klassen, eines Schuljahres oder aller (dann nach Beginn des Schuljahres, darin nach Klassenstufe und natürlicher Bezeichnung) |
+
+- **Bearbeiten:** Klassenstufe und Bezeichnung nach denselben Regeln wie beim Anlegen (400 `invalid_request`, 409 `class_name_taken`; die eigene Bezeichnung in anderer Schreibung oder nur die Stufe zu ändern ist erlaubt). Das Schuljahr ist nicht änderbar: ein abweichendes `school_year_id` im Body ergibt 400 `invalid_request`. `name_key` wird mitgepflegt, die alte Bezeichnung ist danach wieder frei.
+- **Archivieren:** geht mit und ohne Verknüpfungen. Eine archivierte Klasse bleibt lesbar (nur mit Filter in der Liste), ihre Bezeichnung bleibt im Schuljahr belegt (Anlegen und Umbenennen auf diese Bezeichnung: 409 `class_name_taken`), sie ist schreibgeschützt (Bearbeiten: 409 `class_archived`) und nicht wählbar. Erneut archivieren: 409 `class_already_archived`.
+- **Wiederherstellen:** macht die Klasse wieder änderbar und wählbar, ohne erneute Eindeutigkeitsprüfung (die Bezeichnung war belegt). Nicht archivierte Klasse: 409 `class_not_archived`.
+- **Löschen:** endgültig, nur wenn die Verknüpfungsprüfung nichts findet (auch bei archivierten Klassen); sonst 409 `class_linked` mit Hinweis auf Archivieren in der Meldung, die die Verknüpfung benennt. Danach ist die Bezeichnung wieder frei.
+- **Fehler gemeinsam:** 404 `class_not_found`, 403 `forbidden`, 401; hinter nicht freigegebenem Modul 403 `module_disabled` vor der Rechteprüfung.
+- **Erweiterbare Verknüpfungsprüfung:** Interface `ClassLinkCheck` (`label()`, `isLinked(classId)`) und `ClassLinkRegistry::shared()->register(...)`. Spätere Module (#18, #19) melden ihre Prüfung beim Start an (etwa in ihrer Routenregistrierung); `Classes::delete` fragt alle angemeldeten Prüfungen ab und bleibt unverändert. Ohne Anmeldung gilt eine Klasse als unverknüpft. Die Tests melden eine Test-Verknüpfung über `tests/Support/module-probe-routes.php` an (Tabelle `test_class_links`, `HttpTestApp::linkClass`).
+- **Wählbare Klassen für spätere Zuordnungen:** `GET /api/classes/selectable` beziehungsweise `Classes::selectable(?schoolYearId)`; neue Zuordnungen dürfen nur solche Klassen verwenden. Bestehende Zuordnungen an eine später archivierte Klasse bleiben lesbar.
+- **Speicherung:** Migration 0016 ergänzt `classes.archived_at` (NULL = aktiv). Aktionen sperren die Zeile (`SELECT … FOR UPDATE`) und laufen samt Audit in einer Transaktion.
+- **Audit:** `class.updated` (Kontext `name`, `grade_level`, `school_year_id`, `previous_name`, `previous_grade_level`), `class.archived`, `class.restored`, `class.deleted` (Kontext je `name`, `grade_level`, `school_year_id`; Objekt `class`, Objekt-ID = Kennung).
+- Code: `src/Modules/Classes/` (neu: `ClassChange` mit den Regeln für Stufe und Bezeichnung, von `ClassInput` mitgenutzt; `ClassLinkCheck`, `ClassLinkRegistry`). Tests: `tests/Classes/ClassLifecycleTest.php`.
+- Web: Klassenliste mit Schalter „Archivierte anzeigen“, Bearbeiten, Archivieren, Wiederherstellen, Löschen mit Bestätigung; archivierte Klassen sind markiert.
 
 ## Weiterführend
 

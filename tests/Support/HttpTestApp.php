@@ -83,6 +83,8 @@ final class HttpTestApp
         if ($code !== 0) {
             throw new \RuntimeException("Migration der Testdatenbank fehlgeschlagen:\n$out");
         }
+        // Tabelle der Test-Verknuepfung von Klassen (tests/Support/module-probe-routes.php); kein Teil des Schemas.
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_class_links` (`class_id` char(36) NOT NULL PRIMARY KEY)');
     }
 
     private function dropDatabase(): void
@@ -136,7 +138,14 @@ final class HttpTestApp
     /** Entfernt alle Klassen (Testaufbau). */
     public function resetClasses(): void
     {
+        $this->pdo()->exec('DELETE FROM `test_class_links`');
         $this->pdo()->exec('DELETE FROM `classes`');
+    }
+
+    /** Verknuepft eine Klasse mit der Test-Verknuepfung (stellvertretend fuer ein spaeteres Modul wie #18/#19). */
+    public function linkClass(string $classId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_class_links` (`class_id`) VALUES (?)')->execute([$classId]);
     }
 
     /** @return list<array<string,mixed>> nach Anlegezeitpunkt */
