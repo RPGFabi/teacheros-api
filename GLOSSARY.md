@@ -73,7 +73,7 @@ _Avoid_: Lizenz, Feature-Flag, Entitlement, Aktivierung
 ## Stammdaten
 
 **Schuljahr**:
-Ein Zeitraum von einem ersten bis zu einem letzten Kalendertag, in dem die Schule ihren Unterricht organisiert. Schuljahre einer Schulinstanz überschneiden sich nie, dürfen aber Lücken haben. Die Bezeichnung (z. B. „2026/27“) ergibt sich aus dem Zeitraum. Ob ein Schuljahr _laufend_, _kommend_ oder _vergangen_ ist, folgt allein aus dem Datum und wird nie von Hand umgeschaltet. _Laufend_ ist das Schuljahr, in das der heutige Tag fällt, oder, wenn der heutige Tag in einer Lücke liegt, das nächste kommende. Ein Schuljahr mit Klassen bleibt dauerhaft bestehen.
+Ein Zeitraum von einem ersten bis zu einem letzten Kalendertag, in dem die Schule ihren Unterricht organisiert. Schuljahre einer Schulinstanz überschneiden sich nie, dürfen aber Lücken haben. Die Bezeichnung (z. B. „2026/27“) ergibt sich aus dem Zeitraum. Ob ein Schuljahr _laufend_, _kommend_ oder _vergangen_ ist, folgt allein aus dem Datum und wird nie von Hand umgeschaltet. _Laufend_ ist das Schuljahr, in das der heutige Tag fällt, oder, wenn der heutige Tag in einer Lücke zwischen zwei Schuljahren liegt, das nächste kommende. Vor dem ersten Schuljahr ist keines laufend. Ein Schuljahr mit Klassen bleibt dauerhaft bestehen.
 _Avoid_: Jahr, Periode, Saison
 
 **Klasse**:
