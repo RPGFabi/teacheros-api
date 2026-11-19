@@ -97,7 +97,7 @@ final class AccessAdministration
             // Rolle, dann Zielkonto gilt fuer Vergeben und Entziehen, damit sich zwei Admins nicht gegenseitig verklemmen.
             $this->lockRole($roleId);
             // Sperre auf dem Zielkonto: gleichzeitige Aenderungen desselben Kontos laufen nacheinander.
-            $this->lockAccount($targetId);
+            (new AccountRepository())->lock($targetId);
             $roles = (new RoleOverview())->byId();
             $role = $roles[$roleId];
 
@@ -172,7 +172,7 @@ final class AccessAdministration
     private function changeOverride(Actor $actor, string $targetId, string $permission, string $action): void
     {
         $this->atomically(function () use ($actor, $targetId, $permission, $action): void {
-            $this->lockAccount($targetId);
+            (new AccountRepository())->lock($targetId);
             $this->throwIfRefused((new PermissionOverrideRules($actor->accountId, (new RoleOverview())->byId()))->refusal($targetId, $permission, $action));
             $service = PermissionCatalog::service();
             $access = $service->getUserAccess($targetId);
@@ -210,24 +210,25 @@ final class AccessAdministration
      *
      * Alles in einer Transaktion. Sperrreihenfolge wie bei P3 vorgegeben: zuerst der Mutex der Schuladmins
      * ({@see LastAdminGuard::lockMutex()}), dann das Zielkonto, dann die Admin-Zeilen (in der Regelpruefung).
-     * Der Aufruf kehrt erst nach dem lokalen Commit zurueck: Das Spiegeln an den Anmeldedienst (`disable-login`, Ticket #42)
-     * haengt der Aufrufer danach an; scheitert es, bleibt die lokale Sperre bestehen (B2: erst lokal, dann Dienst).
+     * Erst nach dem lokalen Commit folgt der Abgleich mit dem Anmeldedienst ({@see AccountLoginSync}, `disable-login`,
+     * Ticket #42); scheitert er, bleibt die Deaktivierung bestehen (B2: erst lokal, dann Dienst) und das Konto traegt
+     * "Abgleich offen". Der Aufrufer darf deshalb keine eigene Transaktion offen haben.
      *
      * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403);
      *                        `self_deactivation`, `account_not_active`, `last_admin` (409)
      */
-    public function deactivateAccount(Actor $actor, string $targetId): void
+    public function deactivateAccount(Actor $actor, string $targetId, AuthServiceClient $authService = new AuthServiceClient()): void
     {
         $this->atomically(function () use ($actor, $targetId): void {
             LastAdminGuard::lockMutex();
-            $this->lockAccount($targetId);
-            $target = (new AccountRepository())->findByPublicUserId($targetId) ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+            $target = (new AccountRepository())->lock($targetId);
 
             $this->throwIfRefused((new AccountDeactivationRules($actor->accountId, lockAdmins: true))->refusal($target));
 
             (new AccountRepository())->deactivate($targetId, InactiveReason::AdminLocked);
             $this->audit->record($actor, AuditLog::ACCOUNT_DEACTIVATED, 'account', $targetId, ['reason' => InactiveReason::AdminLocked->value]);
         });
+        (new AccountLoginSync($authService))->syncAfterDeactivation($targetId);
     }
 
     /**
@@ -236,7 +237,7 @@ final class AccessAdministration
      * (Grund, `inactive_since` und "Abgleich offen" entfallen, `sessions_valid_after` bleibt) und `account.reactivated` geschrieben.
      * Lehnt der Dienst ab oder ist er nicht erreichbar, aendert sich lokal nichts. Regeln: {@see AccountReactivationRules}.
      *
-     * Eine Transaktion mit gesperrter Kontozeile, wie beim Abgleich ({@see \TeacherOS\Modules\Accounts\AccountLoginSync}):
+     * Eine Transaktion mit gesperrter Kontozeile, wie beim Abgleich ({@see AccountLoginSync}):
      * ein gleichzeitiger "Abgleich wiederholen" wartet und findet dann ein aktives Konto.
      *
      * @throws CodedException `account_not_found` (404); `forbidden`, `permission_not_held` (403); `self_reactivation`,
@@ -246,8 +247,7 @@ final class AccessAdministration
     public function reactivateAccount(Actor $actor, string $targetId, AuthServiceClient $authService = new AuthServiceClient()): void
     {
         $this->atomically(function () use ($actor, $targetId, $authService): void {
-            $this->lockAccount($targetId);
-            $target = (new AccountRepository())->findByPublicUserId($targetId) ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+            $target = (new AccountRepository())->lock($targetId);
 
             $this->throwIfRefused((new AccountReactivationRules($actor->accountId))->refusal($target));
 
@@ -256,16 +256,6 @@ final class AccessAdministration
             (new AccountRepository())->reactivate($targetId);
             $this->audit->record($actor, AuditLog::ACCOUNT_REACTIVATED, 'account', $targetId, []);
         });
-    }
-
-    /** Sperrt die Zeile des Zielkontos (gleichzeitige Aenderungen desselben Kontos laufen nacheinander). */
-    private function lockAccount(string $targetId): void
-    {
-        $lock = DB::getInstance()->prepare('SELECT `id` FROM `accounts` WHERE `public_user_id` = :id FOR UPDATE');
-        $lock->execute(['id' => $targetId]);
-        if ($lock->fetchColumn() === false) {
-            throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
-        }
     }
 
     /** Fuehrt $work in einer Transaktion aus (oder in der des Aufrufers). */

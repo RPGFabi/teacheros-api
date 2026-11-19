@@ -20,7 +20,7 @@ final class Account
         public readonly string $loginName = '',
         public readonly ?int $sessionsValidAfter = null,
         public readonly ?int $inactiveSince = null,
-        public readonly ?string $inactiveReason = null,
+        public readonly ?InactiveReason $inactiveReason = null,
         public readonly bool $loginSyncPending = false,
         public readonly ?string $loginSyncError = null,
     ) {
@@ -29,6 +29,12 @@ final class Account
     public function isActive(): bool
     {
         return $this->status === AccountStatus::Active;
+    }
+
+    /** "Abgleich offen": ein deaktiviertes Konto, dessen Deaktivierung dem Anmeldedienst noch nicht gemeldet ist (Ticket #42). */
+    public function awaitsLoginSync(): bool
+    {
+        return $this->status === AccountStatus::Inactive && $this->loginSyncPending;
     }
 
     /**

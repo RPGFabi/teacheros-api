@@ -57,7 +57,7 @@ final class AuthenticationMiddleware
         }
         if (!$account->isActive()) {
             // `reason` (z. B. admin_locked) laesst das Web den Grund nennen (ADR 0002 B2, Nachtrag #12); null bei Konten ohne Grund.
-            $response->json(['error' => 'Account is not active', 'code' => 'account_inactive', 'reason' => $account->inactiveReason], 401);
+            $response->json(['error' => 'Account is not active', 'code' => 'account_inactive', 'reason' => $account->inactiveReason?->value], 401);
             return false;
         }
         // B2: Tokens aus der Zeit vor der Sitzungsgrenze sind widerrufen, auch wenn sie noch nicht abgelaufen sind.

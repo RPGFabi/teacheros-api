@@ -95,7 +95,7 @@ final class AccountAccessView
                 'login_name' => $account->loginName,
                 'status' => $account->status->value,
                 'inactive_since' => $account->inactiveSince === null ? null : gmdate('c', $account->inactiveSince),
-                'inactive_reason' => $account->inactiveReason,
+                'inactive_reason' => $account->inactiveReason?->value,
                 'login_sync_pending' => $account->loginSyncPending,
                 'login_sync_error' => $account->loginSyncError,
             ];
@@ -104,26 +104,29 @@ final class AccountAccessView
     }
 
     /**
-     * Die Aktionen am Konto selbst fuer den Betrachter (Ticket #41): `deactivate`, mit `allowed`, bei Sperre
-     * `code` und `reason` aus {@see AccountDeactivationRules}; dazu `resync_login` ("Abgleich wiederholen", Ticket #42),
-     * nur solange der Abgleich offen ist, erlaubt mit `accounts.deactivate`; `reactivate` (Ticket #43) nur bei deaktivierten
-     * Konten, mit `allowed`, bei Sperre `code` und `reason` aus {@see AccountReactivationRules}.
+     * Die Aktionen am Konto selbst fuer den Betrachter ({@see AccountAction}), je mit `allowed`, bei Sperre `code` und
+     * `reason` aus den Regeln: `deactivate` (Ticket #41, {@see AccountDeactivationRules}); `resync_login` ("Abgleich wiederholen",
+     * Ticket #42) nur solange der Abgleich offen ist, erlaubt mit `accounts.deactivate`; `reactivate` (Ticket #43,
+     * {@see AccountReactivationRules}) nur bei deaktivierten Konten.
      *
      * @return list<array{action:string,allowed:bool,code:?string,reason:?string}>
      */
     private function accountActions(Account $account, ?string $viewerId): array
     {
-        $refusal = (new AccountDeactivationRules($viewerId))->refusal($account);
-        $actions = [['action' => 'deactivate', 'allowed' => $refusal === null, 'code' => $refusal?->errorCode, 'reason' => $refusal?->getMessage()]];
-        if (!$account->isActive() && $account->loginSyncPending) {
-            $allowed = (new ActorPermissions($viewerId))->can(PermissionCatalog::ACCOUNTS_DEACTIVATE);
-            $actions[] = ['action' => 'resync_login', 'allowed' => $allowed, 'code' => $allowed ? null : 'forbidden', 'reason' => $allowed ? null : 'Dafür fehlt Ihnen das Recht, Konten zu deaktivieren.'];
+        $actions = [$this->accountAction(AccountAction::Deactivate, (new AccountDeactivationRules($viewerId))->refusal($account))];
+        if ($account->awaitsLoginSync()) {
+            $actions[] = $this->accountAction(AccountAction::ResyncLogin, (new AccountActionRules($viewerId, AccountAction::ResyncLogin))->rightRefusal());
         }
         if ($account->status === AccountStatus::Inactive) {
-            $refusal = (new AccountReactivationRules($viewerId))->refusal($account);
-            $actions[] = ['action' => 'reactivate', 'allowed' => $refusal === null, 'code' => $refusal?->errorCode, 'reason' => $refusal?->getMessage()];
+            $actions[] = $this->accountAction(AccountAction::Reactivate, (new AccountReactivationRules($viewerId))->refusal($account));
         }
         return $actions;
+    }
+
+    /** @return array{action:string,allowed:bool,code:?string,reason:?string} */
+    private function accountAction(AccountAction $action, ?CodedException $refusal): array
+    {
+        return ['action' => $action->value, 'allowed' => $refusal === null, 'code' => $refusal?->errorCode, 'reason' => $refusal?->getMessage()];
     }
 
     /**

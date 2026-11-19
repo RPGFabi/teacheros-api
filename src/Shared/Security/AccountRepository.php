@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TeacherOS\Shared\Security;
 
 use Hoelzle\Core\Database\DB;
+use TeacherOS\Shared\Exceptions\CodedException;
 
 /** Liest Konten bei jedem Aufruf frisch aus der Datenbank (kein Cache, ADR 0002 B1). */
 final class AccountRepository
@@ -15,6 +16,22 @@ final class AccountRepository
     public function findByPublicUserId(string $publicUserId): ?Account
     {
         return $this->findOne('`public_user_id` = :v', $publicUserId);
+    }
+
+    /**
+     * Sperrt die Zeile des Kontos (`FOR UPDATE`; nur in einer Transaktion: gleichzeitige Aenderungen desselben Kontos
+     * laufen nacheinander) und liest es danach frisch.
+     *
+     * @throws CodedException `account_not_found` (404)
+     */
+    public function lock(string $publicUserId): Account
+    {
+        $lock = DB::getInstance()->prepare('SELECT `id` FROM `accounts` WHERE `public_user_id` = :id FOR UPDATE');
+        $lock->execute(['id' => $publicUserId]);
+        if ($lock->fetchColumn() === false) {
+            throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
+        }
+        return $this->findByPublicUserId($publicUserId) ?? throw new CodedException('account_not_found', 404, 'Das Konto gibt es nicht.');
     }
 
     public function findByEmail(string $email): ?Account
@@ -187,7 +204,7 @@ final class AccountRepository
                 $row['login_name'],
                 $row['sessions_valid_after_ts'] === null ? null : (int) $row['sessions_valid_after_ts'],
                 $row['inactive_since_ts'] === null ? null : (int) $row['inactive_since_ts'],
-                $row['inactive_reason'],
+                $row['inactive_reason'] === null ? null : InactiveReason::tryFrom($row['inactive_reason']),
                 (bool) $row['login_sync_pending'],
                 $row['login_sync_error'],
             );

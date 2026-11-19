@@ -10,7 +10,7 @@ use TeacherOS\Tests\Support\HttpTestApp;
 use TeacherOS\Tests\Support\TestTokens;
 
 /**
- * Deaktivierung an den Anmeldedienst spiegeln, Abgleich wiederholen (Ticket #42, ADR 0002 B2 und Nachtrag #12):
+ * Deaktivierung mit dem Anmeldedienst abgleichen, Abgleich wiederholen (Ticket #42, ADR 0002 B2 und Nachtrag #12):
  * `disable-login` mit `admin_locked` nach der lokalen Sperre, Markierung "Abgleich offen" bei Ausfall und
  * `POST /api/accounts/{id}/resync-login`. HTTP-Tests gegen MariaDB und den Auth-Stub.
  */
@@ -56,7 +56,7 @@ final class AccountLoginSyncTest extends TestCase
         return $stmt->fetch(\PDO::FETCH_ASSOC);
     }
 
-    // ---- Spiegeln ---------------------------------------------------------------------------
+    // ---- Abgleich ---------------------------------------------------------------------------
 
     public function testNachDerDeaktivierungIstDisableLoginMitAdminLockedAufgerufen(): void
     {
@@ -241,7 +241,7 @@ final class AccountLoginSyncTest extends TestCase
         return ['status' => $status, 'body' => ['error' => 'x', 'code' => $code]];
     }
 
-    public function testEineFachlicheAblehnungBeimSpiegelnHaeltDenCodeFestUndNenntIhnInDerLesesicht(): void
+    public function testEineFachlicheAblehnungBeimAbgleichHaeltDenCodeFestUndNenntIhnInDerLesesicht(): void
     {
         $this->stub->script('disable-login', $this->rejection());
 
