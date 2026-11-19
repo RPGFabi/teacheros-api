@@ -13,6 +13,7 @@ use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
+use TeacherOS\Modules\Accounts\OwnAccountController;
 use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 use TeacherOS\Shared\Security\PermissionCatalog;
@@ -51,6 +52,8 @@ final class AppBootstrap
         // die Einrichtung anstossen kann.
         $authenticated = [[AuthenticationMiddleware::class, 'handle']];
         $router->get('/api/me', [self::class, 'me'], [[AuthenticationMiddleware::class, 'handleAllowingMfaEnrollment']]);
+        // Eigener Sitzungswiderruf auf "Mein Konto" (Ticket #50): ohne besonderes Recht, jedes Konto beendet nur seine eigenen Sitzungen.
+        $router->post('/api/me/revoke-sessions', [OwnAccountController::class, 'revokeSessions'], $authenticated);
 
         $router->get('/api/accounts', [AccountsController::class, 'index'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
         $router->post('/api/accounts/invitations', [AccountsController::class, 'invite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);

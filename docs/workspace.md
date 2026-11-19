@@ -198,6 +198,14 @@ Ein Verwalter mit `accounts.revoke_sessions` beendet alle Sitzungen eines **akti
 - **Lesesicht:** `account_actions` enthält `revoke_sessions {allowed, code, reason}` immer (wie `deactivate`; bei nicht aktiven Konten gesperrt mit `account_not_active`).
 - Tests: `tests/Accounts/SessionRevocationTest.php` (HTTP gegen MariaDB und den Auth-Stub, `AuthStub::revokeSessionsCalls()`; `tests/Support/revoke-sessions.php` ruft den Baustein mit Versuchszahl auf).
 
+## Eigener Sitzungswiderruf auf „Mein Konto“ (Ticket #50)
+
+Jedes Konto beendet seine eigenen Sitzungen, auch die aktuelle, ohne besonderes Recht (ADR 0002, Nachtrag #16). `POST /api/me/revoke-sessions` (ohne Body, `OwnAccountController`) verlangt ein gültiges Token (wie alle fachlichen Routen auch die MFA-Pflicht, B3) und antwortet mit `{"revoked": true}`.
+
+- **Ablauf:** derselbe Baustein wie bei der Verwaltung (`SessionRevocation::revoke` mit `RevocationInitiator::Owner`, Audit `account.sessions_revoked` mit `{initiated_by: "self"}`, Akteur das Konto selbst), aber mit bis zu **drei** sofortigen Versuchen bei G3. Es gibt keine Vorbedingung außer dem aktiven Konto (ein nicht aktives Konto kommt gar nicht durch die Authentifizierung).
+- **Ausfall:** Scheitern alle drei Versuche, bleibt der Widerruf offen (Sitzungsgrenze gesetzt, Aufruf `revoke_sessions` offen, jedes Token des Kontos mit 401 `session_revoked` abgelehnt, Selbstheilung beim ersten Request mit neuem Token) und die Antwort ist `502 {"code": "auth_unavailable"}` mit dem Hinweis, sich später erneut anzumelden oder an die Schule zu wenden.
+- Tests: `tests/Accounts/OwnSessionRevocationTest.php`.
+
 ## Rechte der Lesesicht von Konten (Review #12)
 
 - `GET /api/accounts/{id}/access` verlangt `accounts.view` **und** eines von `roles.manage`, `roles.assign`, `permissions.assign`, `accounts.deactivate`, `accounts.revoke_sessions` (`PermissionCatalog::ACCOUNT_DETAIL_READERS`); sonst `403 forbidden`. Der Verwalter, der nur Konten deaktiviert, sieht so das Konto samt `account_actions`. Das Web (`canViewAccess` in `App.tsx`) bietet die Detailansicht mit derselben Bedingung an.
