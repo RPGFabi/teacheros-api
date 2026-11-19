@@ -116,7 +116,8 @@ final class AccountReactivationTest extends TestCase
         $this->reactivate();
 
         $afterOld = $me($old);
-        $afterNew = $me(TestTokens::access(self::TARGET));
+        // iat nach der Sekunde der Deaktivierung: ein Token aus derselben Sekunde gilt als widerrufen (B2, `iat <= Grenze`)
+        $afterNew = $me(TestTokens::access(self::TARGET, ['iat' => time() + 2]));
 
         $this->assertSame([401, 'session_revoked'], [$afterOld['status'], $afterOld['json']['code']]);
         $this->assertSame(200, $afterNew['status']);

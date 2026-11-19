@@ -132,6 +132,19 @@ final class AccountDeactivationTest extends TestCase
         $this->assertSame([401, 'session_revoked'], [$noIat['status'], $noIat['json']['code']], 'ohne iat laesst sich die Grenze nicht pruefen: fail-closed');
     }
 
+    public function testEinTokenAusDerSekundeDerSitzungsgrenzeIstWiderrufenEinesAusDerSekundeDanachGueltig(): void
+    {
+        $this->app->createAccount(self::TARGET, 'active');
+        $boundary = time() - 10;
+        $this->app->pdo()->exec("UPDATE `accounts` SET `sessions_valid_after` = FROM_UNIXTIME($boundary)");
+
+        $sameSecond = $this->me(TestTokens::access(self::TARGET, ['iat' => $boundary]));
+        $nextSecond = $this->me(TestTokens::access(self::TARGET, ['iat' => $boundary + 1]));
+
+        $this->assertSame([401, 'session_revoked'], [$sameSecond['status'], $sameSecond['json']['code']], 'Gleichheit gilt als widerrufen: ein Token aus der Sekunde der Deaktivierung kann vor ihr entstanden sein');
+        $this->assertSame(200, $nextSecond['status']);
+    }
+
     public function testOhneSitzungsgrenzeBleibenAlleTokensGueltig(): void
     {
         $this->app->createAccount(self::TARGET, 'active');
