@@ -11,7 +11,9 @@ use Hoelzle\Core\Debug\Debugger;
 use Hoelzle\Core\Http\CorsHandler;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
+use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
+use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 use TeacherOS\Shared\Security\PermissionCatalog;
 use TeacherOS\Shared\Security\RequirePermission;
@@ -51,6 +53,29 @@ final class AppBootstrap
         $router->get('/api/accounts', [AccountsController::class, 'index'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
         $router->post('/api/accounts/invitations', [AccountsController::class, 'invite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
         $router->post('/api/accounts/:id/reinvite', [AccountsController::class, 'reinvite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
+
+        $reader = [...$authenticated, RequirePermission::forAny(PermissionCatalog::ADMINISTRATION)];
+        $router->get('/api/permissions', [RolesController::class, 'permissions'], $reader);
+        $router->get('/api/roles', [RolesController::class, 'index'], $reader);
+
+        // Rollen an Konten (Ticket #34): Lesesicht der Zuweisungen, Vergeben und Entziehen einzeln.
+        // Kontodetail: zusaetzlich accounts.view (ADR 0002 B4: Konten sehen, wer das Recht dazu hat).
+        $router->get('/api/accounts/:id/access', [AccountAccessController::class, 'show'], [...$reader, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
+        $assigner = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_ASSIGN)];
+        $router->post('/api/accounts/:id/roles', [AccountAccessController::class, 'assign'], $assigner);
+        $router->post('/api/accounts/:id/roles/:roleId/revoke', [AccountAccessController::class, 'revoke'], $assigner);
+
+        // Rollen anlegen, bearbeiten, loeschen (Ticket #33). Nur GET/POST, weil der CORS-Standard nur diese zulaesst.
+        $manager = [...$authenticated, RequirePermission::for(PermissionCatalog::ROLES_MANAGE)];
+        $router->post('/api/roles', [RolesController::class, 'create'], $manager);
+        $router->post('/api/roles/:id/update', [RolesController::class, 'update'], $manager);
+        $router->post('/api/roles/:id/delete', [RolesController::class, 'delete'], $manager);
+
+        // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.
+        $permissionAssigner = [...$authenticated, RequirePermission::for(PermissionCatalog::PERMISSIONS_ASSIGN)];
+        $router->post('/api/accounts/:id/permissions/grant', [AccountAccessController::class, 'grantPermission'], $permissionAssigner);
+        $router->post('/api/accounts/:id/permissions/withdraw', [AccountAccessController::class, 'withdrawPermission'], $permissionAssigner);
+        $router->post('/api/accounts/:id/permissions/clear', [AccountAccessController::class, 'clearPermission'], $permissionAssigner);
     }
 
     public static function me(Request $request, Response $response): void

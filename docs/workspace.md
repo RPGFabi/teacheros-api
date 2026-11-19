@@ -74,6 +74,86 @@ Schuladmins (Recht `accounts.view` bzw. `accounts.invite`, nicht die Rolle) verw
 - Einladen ohne E-Mail (Ticket #28): `{"login_name": "schueler.eins"}` legt ein Konto ohne E-Mail an. Erneut einladen eines Kontos ohne E-Mail liefert einen neuen Code und macht den vorigen ungültig. `invite_expires_at` (ISO 8601, UTC) nennt, bis wann die Einladung gilt; die API reicht es vom Anmeldedienst durch, ohne es zu speichern (`null`, wenn er keins nennt). Die Einladungskarte zeigt es als „gültig bis“.
 - Die Web-Seite zeigt den Code auf einer druckbaren Einladungskarte (10 × 3 cm, QR-Code auf `<Web-Origin>/einladung?code=…`, A4-Raster 2 × 9 über `@media print`). E2E: `tests/e2e/first-admin-invite.sh` spielt auch den Durchlauf per Anmeldename und Code durch (CLI und API, Anmeldedienst mit G6).
 
+## Rollen im Web (Ticket #32)
+
+Lesender Teil der Rollenverwaltung (ADR 0002 B4, Nachtrag #11). Beide Endpunkte brauchen ein gültiges Token und **eines** der drei Verwaltungsrechte `roles.manage`, `roles.assign` oder `permissions.assign` (ein `roles.view` gibt es nicht); sonst `403 {"code": "forbidden"}`.
+
+| Endpunkt | Antwort |
+|---|---|
+| `GET /api/permissions` | `200 {"permissions": [{key, name, group}]}`: der Rechte-Katalog mit deutschem Namen und Gruppe, in Anzeigereihenfolge |
+| `GET /api/roles` | `200 {"roles": [{id, key, name, description, permissions, all_permissions, requires_mfa, protection, account_count, actions, permission_actions}], "create": {allowed, code, reason, permission_actions}}` (Aktionen: siehe „Aktionen auf der Rollenseite“ bei Ticket #33) |
+
+- `protection` (Tabelle `role_settings`, Enum `RoleProtection`): `wildcard` (Schuladmin, alle Rechte), `protected` (Schüler/in, Rechte fest aus dem Code), `standard` (übrige Standardrollen: Rechte änderbar, nicht löschbar), `custom` (selbst angelegt). `requires_mfa` ist bei Standardrollen fest.
+- Wildcard-Rollen liefern `all_permissions: true` und in `permissions` den aufgelösten Katalog; `*` verlässt die API nie. `account_count` ist die Zahl der Konten mit der Rolle. Reihenfolge: Standardrollen fest (Schuladmin, Schüler/in, Lehrkraft, Erziehungsberechtigte/r, Sekretariat, Schulleitung), danach eigene Rollen nach Name.
+- Das Setup (`setup/migrate/0008_standard_roles.php`) legt die sechs Standardrollen idempotent an; die letzten vier starten ohne Rechte, bestehende Rollen bleiben unverändert. Die Migration enthält die Definitionen (Schlüssel, Name, Beschreibung, Schutzstufe, MFA) fest und nutzt keinen veränderlichen Anwendungscode; `StandardRoles` kennt sie nur für die Laufzeit (Anzeigereihenfolge). Fehlt einer schon vorhandenen Rolle nur die Zeile in `role_settings`, wird sie nachgetragen. Nur wenn die **Rolle selbst** neu angelegt wird, entsteht ein Audit-Eintrag `role.created` (Akteur `cli`, Objekt = Rolle, Kontext Schlüssel und Name); Schuladmin legt schon Migration 0004 an, dafür gibt es keinen.
+- Jede Rolle hat eine Zeile in `role_settings` (Migration 0008, `createRole`). Fehlt sie, ist das ein Fehler im Bestand: `RoleSettingsRepository::get`, `RoleOverview::list` und damit Bearbeiten, Löschen und die Rollenliste werfen eine `LogicException` (`500`), statt die Rolle stillschweigend als „eigene Rolle mit MFA“ zu behandeln. Nur `MfaRequirement::recomputeFor` behandelt eine Rolle ohne Merkmale vorsichtig als „erfordert MFA“.
+- Rechte-Katalog: `PermissionCatalog::entries()` (Schlüssel, Name, Gruppe); neue Rechte gehören dort hinein. Der Web-Navigationspunkt „Rollen“ erscheint nur mit einem der drei Rechte (aus `GET /api/me`).
+
+## Rollen an Konten vergeben (Ticket #34)
+
+Kontodetail und Rollenvergabe (ADR 0002 B4, Nachtrag #11). Lesen mit `accounts.view` **und** einem der drei Verwaltungsrechte (Review #11, Q25: wer Konten nicht sehen darf, bekommt auch keine Kontodaten), Vergeben und Entziehen nur mit `roles.assign`; sonst `403 forbidden`. Alle Änderungen laufen ausschließlich über `AccessAdministration::assignRole/revokeRole` (eine Transaktion mit Sperre auf dem Zielkonto: Prüfung, Änderung, `accounts.mfa_required` neu, Audit). Die Regeln (P2, P6) stehen in `RoleAssignmentRules` und gelten für Ausführung und Lesesicht gleichermaßen. Nur `GET` und `POST`, weil der CORS-Standard nur diese Methoden zulässt.
+
+| Endpunkt | Antwort |
+|---|---|
+| `GET /api/accounts/{id}/access` | `200` Zuweisungs-Lesesicht (unten); `404 account_not_found` |
+| `POST /api/accounts/{id}/roles` `{role_id}` | vergibt **eine** Rolle additiv; `200` mit der neuen Lesesicht; `400 role_required`, `404 role_not_found` |
+| `POST /api/accounts/{id}/roles/{roleId}/revoke` | entzieht **eine** Rolle, andere Rollen und Einzelrechte bleiben; `200` mit der neuen Lesesicht |
+
+- Die Schreibwege (`roles.assign`, `permissions.assign`) verlangen `accounts.view` nicht, antworten aber mit derselben Lesesicht. Deshalb enthält `account` dann nur `{id, mfa_required}`; `email`, `login_name` und `status` liefert die Lesesicht nur Betrachtern mit `accounts.view` (und der CLI). Das Web zeigt die Detailansicht nur mit `accounts.view` und einem Verwaltungsrecht.
+- Lesesicht: `account {id, email, login_name, status, mfa_required}`, `roles [{id, key, name, protection, requires_mfa}]`, `permissions [{key, name, group, effective, sources}]` und `role_actions [{role_id, role_key, role_name, action: assign|revoke, allowed, code, reason}]` (eine Zeile je Rolle der Schulinstanz, für den **Betrachter**; `code`/`reason` nennen, warum eine Aktion gesperrt ist). `sources` nennt die Herkunft eines Rechts: `{kind: "role", role_id, role_key, role_name}`, `{kind: "individual"}` (Einzelrecht gewährt) oder `{kind: "withdrawn"}` (Einzelrecht entzogen, dann `effective: false`). Rechte ohne Herkunft fehlen; `*` erscheint nie.
+- P2 (403): ohne Wildcard erhält man sich selbst keine Rolle (`self_escalation`) und vergibt wie entzieht eine Rolle nur, wenn man **alle** ihre Rechte effektiv besitzt (`permission_not_held`; die Rolle Schuladmin also nur als Schuladmin). Ein entzogenes Einzelrecht zählt als nicht besessen.
+- 409: `student_role_exclusive` (Schüler/in nur ohne weitere Rolle und Einzelrechte, und umgekehrt), `admin_overrides_forbidden` (Rolle Schuladmin an ein Konto mit Einzelrechten).
+- Vergeben einer vorhandenen und Entziehen einer nicht vorhandenen Rolle ist ein No-op ohne Audit-Eintrag (`200`).
+- Audit: `role.assigned` / `role.revoked`, Objekt = Konto, Akteur = Verwalter, Kontext `{role: <Schlüssel>, name: <Name>}`. `grantInitialAdmin` und `revokeAllRoles` berechnen `mfa_required` ebenfalls neu (`MfaRequirement::recomputeFor`: ODER über `role_settings.requires_mfa` aller Rollen; Rolle ohne Merkmale zählt als „erfordert MFA“).
+- `revokeAllRoles` (ersetzte, nie angenommene Einladung) prüft P3 über `ensureAdminRemains` (als Erstes, Rolle vor Konto) und schreibt je entzogener Rolle `role.revoked` `{role, name}` und je zurückgesetztem Einzelrecht `permission.override_cleared` `{permission, mode}`.
+- P3 (#35, siehe unten) steht in `RoleAssignmentRules::refusal()` beim Entziehen; Einzelrechte (#36, siehe unten) füllen die Herkünfte `individual`/`withdrawn` der Lesesicht.
+
+## Einzelrechte (Ticket #36)
+
+Ein Verwalter mit `permissions.assign` gewährt, entzieht oder setzt Einzelrechte eines Kontos zurück (Glossar: Einzelrecht; ADR 0002 B4, Nachtrag #11). Alle Änderungen laufen über `AccessAdministration::grantPermission/withdrawPermission/clearPermissionOverride` (eine Transaktion mit Sperre auf dem Zielkonto: Prüfung, Änderung, Audit). Die Regeln stehen in `PermissionOverrideRules` und gelten für Ausführung und Lesesicht gleichermaßen. Je Recht einzeln, kein Gesamt-Ersetzen; nur `POST` (CORS).
+
+| Endpunkt (Body `{permission}`) | Wirkung |
+|---|---|
+| `POST /api/accounts/{id}/permissions/grant` | Einzelrecht `added`: das Recht gilt zusätzlich zu den Rollen (ersetzt ein entzogenes) |
+| `POST /api/accounts/{id}/permissions/withdraw` | Einzelrecht `removed`: das Recht gilt trotz Rolle nicht |
+| `POST /api/accounts/{id}/permissions/clear` | Einzelrecht entfernt: es gilt wieder, was die Rollen ergeben |
+
+Alle drei antworten `200` mit der neuen Lesesicht von `GET /api/accounts/{id}/access`; Wiederholen ist ein No-op ohne Audit-Eintrag.
+
+- Nur mit `permissions.assign`, sonst `403 forbidden` (Route). `400 permission_required` (kein Recht angegeben), `400 unknown_permission` (nicht im Katalog, auch `*`), `404 account_not_found`.
+- P2 (403, Wildcard-Konten und CLI ausgenommen): am eigenen Konto `self_escalation`; sonst nur Rechte, die der Verwalter selbst **effektiv** besitzt (`permission_not_held`), für alle drei Handlungen. Das Zurücksetzen eines entzogenen Einzelrechts zählt als Gewähren. Prüfreihenfolge: Katalog, Selbst, Besitz, dann 409.
+- 409 (nur Gewähren und Entziehen; Zurücksetzen räumt immer auf): `student_role_exclusive` (Konto mit Rolle Schüler/in), `admin_overrides_forbidden` (Konto mit Rolle Schuladmin).
+- Lesesicht um `permission_actions [{permission, name, group, action: grant|withdraw|clear, allowed, code, reason}]` erweitert: je Katalogrecht die eine Aktion für den **Betrachter** (`clear`, wenn das Konto ein Einzelrecht dazu hat, sonst `withdraw`, wenn das Recht über eine Rolle gilt, sonst `grant`); `code`/`reason` nennen, warum sie gesperrt ist. Die Herkünfte `individual`/`withdrawn` in `permissions[].sources` sind jetzt befüllt.
+- Audit: `permission.granted` / `permission.withdrawn` / `permission.override_cleared`, Objekt = Konto, Akteur = Verwalter, Kontext `{permission, mode}` (`added`/`removed`; beim Zurücksetzen der zurückgesetzte Modus).
+- Web: Abschnitt „Einzelrechte“ in `AccountDetail` (alle Katalogrechte mit Herkunft und der einen Aktion; gesperrte Aktionen deaktiviert mit Begründung); `AccountsPage`-Prop `canAssignPermissions` (Recht `permissions.assign` aus `GET /api/me`).
+
+## Rollen anlegen, bearbeiten, löschen (Ticket #33)
+
+Schreibwege der Rollenverwaltung (ADR 0002 B4, Nachtrag #11). Alle brauchen ein gültiges Token und **`roles.manage`** (ein Konto mit nur `roles.assign` erhält `403 forbidden`). Die Änderung läuft ausschließlich über `AccessAdministration` (`createRole`, `updateRole`, `deleteRole`), je in einer Transaktion samt Audit-Eintrag. Nur `GET` und `POST`, weil der CORS-Standard nur diese Methoden zulässt (wie bei #34); Ändern und Löschen sind deshalb eigene POST-Routen.
+
+| Endpunkt | Body | Antwort |
+|---|---|---|
+| `POST /api/roles` | `{name, description?, permissions?, requires_mfa?}` (Standard: keine Rechte, MFA an) | `201 {"role": {…}}` (Zeile wie in `GET /api/roles`) |
+| `POST /api/roles/:id/update` | beliebige der Felder; nicht genannte bleiben unverändert (`description: null` oder `""` leert sie) | `200 {"role": {…}}` |
+| `POST /api/roles/:id/delete` | – | `200 {"deleted": true, "id": …}` |
+
+- Den Rollenschlüssel (`r_` + 16 Hex-Zeichen) vergibt die API zufällig; er ist unveränderlich und taucht nur in `key` der Antwort auf, nicht in der Oberfläche. Name 1 bis 120, Beschreibung bis 500 Zeichen, Rechte nur aus dem Katalog (kein `*`).
+- Alle Meldungen der API sprechen mit „Sie“.
+- Fehler: `400 invalid_request` (Eingabe), `404 role_not_found`; `403 permission_not_held` (P2: ohne Wildcard nur Rechte hinzufügen, die man effektiv besitzt), `403 self_escalation` (eine selbst innegehabte Rolle erweitern; Entfernen von Rechten ist immer erlaubt; Wildcard-Konten sind ausgenommen); `409 role_protected` (Schuladmin/Schüler/in bearbeiten, Standardrolle löschen, MFA-Merkmal einer Standardrolle auf einen anderen Wert setzen; derselbe Wert ist unschädlich), `409 role_in_use` (Löschen einer noch zugewiesenen Rolle). Reihenfolge: 404, `role_protected`, `self_escalation`, `permission_not_held`.
+- Ändert sich das MFA-Merkmal einer eigenen Rolle, berechnet `MfaRequirement::recomputeFor()` `accounts.mfa_required` aller Konten mit der Rolle in derselben Transaktion neu (ODER über alle Rollen des Kontos; Rollen ohne Merkmale zählen als MFA-pflichtig).
+- Löschen sperrt die Rollenzeile (`SELECT … FOR UPDATE`); gleichzeitige Zuweisungen warten über den Fremdschlüssel: Entweder sieht das Löschen die Zuweisung (`role_in_use`) oder die Zuweisung scheitert an der gelöschten Rolle.
+- Audit (Objekt `role` = Rollen-ID): `role.created` und `role.deleted` mit `{role, name}`; `role.updated` mit `{role, name}` plus, soweit zutreffend, `old_name`, `description_changed`, `added` und `removed` (kommagetrennte Rechte-Schlüssel) und `requires_mfa`. Ein Aufruf ohne tatsächliche Änderung schreibt nichts.
+- Aktionen auf der Rollenseite (Review #11): Die Regeln stehen in `RoleManagementRules` (Schutzstufen, P2, `roles.manage`) und gelten für die Schreibwege (`AccessAdministration`) wie für die Lesesicht (`RoleManagementView`), nach dem Muster von `role_actions` und `permission_actions`. `GET /api/roles` ergänzt jede Rolle um `actions [{action: edit|delete|set_mfa, allowed, code, reason}]` und `permission_actions [{permission, allowed, code, reason}]` (je Recht, das die Rolle noch nicht hat: darf der Betrachter es hinzufügen? `role_protected`, `self_escalation`, `permission_not_held`) und liefert `create {allowed, code, reason, permission_actions}` für eine neue Rolle. Ohne `roles.manage` ist alles gesperrt (`code: forbidden`). Die Antworten von `POST /api/roles` und `…/update` enthalten dieselben Felder in `role`.
+- Web: Seite „Rollen“ mit Anlegen-/Bearbeiten-Formular (gruppierte Checkboxen aus `GET /api/permissions`) und Löschen mit Bestätigung. Welche Aktion erlaubt ist, übernimmt die Seite aus `actions`, `permission_actions` und `create` (keine Nachrechnung im Client); nicht erlaubte Aktionen (ohne `roles.manage`, geschützte Rolle, Standardrolle, noch zugewiesene Rolle, nicht besessenes Recht, selbst innegehabte Rolle erweitern) bleiben sichtbar, aber deaktiviert, mit der Begründung der API; die API entscheidet endgültig.
+
+## Letzter Schuladmin bleibt erhalten (Ticket #35)
+
+P3 (ADR 0002 B4, Nachtrag #11): Wer dem letzten Konto mit Status `active` die Rolle Schuladmin entzieht, erhält `409 last_admin`, auch bei sich selbst. Ein nur eingeladener oder deaktivierter zweiter Admin zählt nicht. Die Lesesicht (`role_actions`) sperrt „Entziehen“ dann mit `code: last_admin` und Begründung; die Web-Kontodetailansicht zeigt den Knopf deaktiviert.
+
+- Baustein: `AccessAdministration::ensureAdminRemains(array $leavingIds)` (wirft `last_admin`). Für spätere Aufrufer wie die Deaktivierung von Konten: in der Transaktion der Aktion als **erstes** aufrufen, mit den Konten, die als aktive Schuladmins ausscheiden würden. Konten ohne aktive Admin-Rolle ändern nichts und werden nie abgelehnt. Die Regel selbst steht in `LastAdminGuard`; `RoleAssignmentRules` nutzt sie für Ausführung (sperrend) und Lesesicht (nicht sperrend).
+- Sperrstrategie: Die Zeile der Rolle Schuladmin in `permission_roles` ist der Mutex über den Kreis der Admins (`SELECT … FOR UPDATE`), danach liest die Prüfung die aktiven Admins ebenfalls mit `FOR UPDATE` (neuester Stand, auch in laufender Transaktion). Reihenfolge immer: Rolle (Mutex), dann Zielkonto; `changeRole` sperrt deshalb die Rolle vor dem Konto, beim Vergeben wie beim Entziehen. Der Verlierer eines Rennens erhält `409 last_admin` oder, wenn der Gewinner ihm die Rolle schon genommen hat, `403 permission_not_held`.
+- Test der Nebenläufigkeit (`tests/Security/LastAdminTest.php`): zwei echte php-cgi-Prozesse gleichzeitig (`HttpTestApp::requestConcurrently`) gegen dieselbe Test-DB; ein Test-Trigger verzögert das Löschen der Rollenzuweisung um 1,5 s und macht das Fenster zwischen Prüfung und Commit groß. Ohne Sperre scheitert der Test reproduzierbar (beide Requests `200`, kein Admin übrig).
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)

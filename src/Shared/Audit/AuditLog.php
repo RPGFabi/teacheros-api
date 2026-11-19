@@ -18,8 +18,16 @@ final class AuditLog
     /** Eine nie angenommene Einladung wurde ersetzt; das Konto (Objekt) ist gelöscht. */
     public const ACCOUNT_INVITATION_WITHDRAWN = 'account.invitation_withdrawn';
     public const ACCOUNT_ACTIVATED = 'account.activated';
+    public const ROLE_CREATED = 'role.created';
     public const ROLE_ASSIGNED = 'role.assigned';
     public const ROLE_REVOKED = 'role.revoked';
+    /** Rechte, Name, Beschreibung oder MFA-Merkmal einer Rolle geaendert (Ticket #33). */
+    public const ROLE_UPDATED = 'role.updated';
+    public const ROLE_DELETED = 'role.deleted';
+
+    public const PERMISSION_GRANTED = 'permission.granted';
+    public const PERMISSION_WITHDRAWN = 'permission.withdrawn';
+    public const PERMISSION_OVERRIDE_CLEARED = 'permission.override_cleared';
 
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void

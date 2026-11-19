@@ -20,6 +20,18 @@ _Avoid_: Account, User, Login, Benutzerkonto
 Eine benannte Funktion, die ein Konto an der Schulinstanz innehat (z. B. Lehrkraft, Erziehungsberechtigte/r, Schuladmin). Ein Konto kann mehrere Rollen haben; jede Rolle wird einzeln vergeben und beendet, ohne das Konto oder andere Rollen zu berühren.
 _Avoid_: Gruppe, Typ
 
+**Standardrolle**:
+Eine Rolle, die es an jeder Schulinstanz gibt (Schuladmin, Schüler/in, Lehrkraft, Erziehungsberechtigte/r, Sekretariat, Schulleitung) und die nicht gelöscht werden kann. Die Rechte von Schuladmin und Schüler/in liegen fest, die der übrigen Standardrollen legt die Schule fest. Daneben kann eine Schule eigene Rollen anlegen.
+_Avoid_: Systemrolle, Grundrolle
+
+**Recht**:
+Die Erlaubnis, eine bestimmte Art von Handlung an der Schulinstanz auszuführen (z. B. Konten einladen). Ein Konto erhält Rechte über seine Rollen und über Einzelrechte; ob es auf ein bestimmtes Objekt zugreifen darf, entscheidet zusätzlich seine Zuordnung.
+_Avoid_: Permission, Berechtigung, Befugnis
+
+**Einzelrecht**:
+Ein Recht, das einem einzelnen Konto abweichend von seinen Rollen zusätzlich gewährt oder entzogen wird. Konten mit der Rolle Schuladmin oder Schüler/in haben keine Einzelrechte.
+_Avoid_: Override, Sonderrecht, Ausnahme
+
 **Anmeldename**:
 Die an der Schulinstanz eindeutige Kennung, mit der sich ein Konto anmeldet; zugleich der Name, unter dem das Konto im Anmeldedienst erscheint. Ohne eigene Vergabe ist er die E-Mail-Adresse; Konten ohne E-Mail-Adresse (typisch Schüler/innen) melden sich nur mit ihm an.
 _Avoid_: Username, Login, Benutzername
