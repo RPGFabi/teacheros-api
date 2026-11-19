@@ -99,12 +99,12 @@ final class OpenCallsTest extends TestCase
     {
         $this->stub->script('disable-login', ['status' => 503, 'body' => []]);
         $this->as(self::ADMIN, 'POST', '/api/accounts/' . self::TARGET . '/deactivate');
-        $this->app->addOpenCall(self::TARGET, 'reset_mfa', 'x');
+        $this->app->addOpenCall(self::TARGET, 'reset_totp', 'x');
 
         $r = $this->as(self::ADMIN, 'POST', '/api/accounts/' . self::TARGET . '/reactivate');
 
         $this->assertSame(200, $r['status']);
-        $this->assertSame([['operation' => 'reset_mfa', 'rejection_code' => 'x']], $r['json']['account']['open_calls']);
+        $this->assertSame([['operation' => 'reset_totp', 'rejection_code' => 'x']], $r['json']['account']['open_calls']);
     }
 
     // ---- Menge, Reihenfolge, Ablehnung (eigene Aufrufe) -----------------------------------------
@@ -120,6 +120,49 @@ final class OpenCallsTest extends TestCase
         $r = $this->app->cli('tests/Support/open-calls.php', [$accountId, json_encode($handlers, JSON_THROW_ON_ERROR)]);
         $this->assertSame('', $r['err']);
         return json_decode($r['out'], true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Die Selbstheilung der Middleware ({@see OpenCalls::releaseTokens()}) mit eigenen Handlern; `blocking` macht den Handler zu einem TokenBlockingCall.
+     *
+     * @param list<array{op:string,outcome:string,blocking?:bool}> $handlers
+     * @return array{calls:list<string>,thrown:?array{code:string,status:int}}
+     */
+    private function releaseWith(array $handlers): array
+    {
+        $r = $this->app->cli('tests/Support/open-calls.php', [self::TARGET, json_encode($handlers, JSON_THROW_ON_ERROR), 'release']);
+        $this->assertSame('', $r['err']);
+        return json_decode($r['out'], true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    private function boundary(): ?string
+    {
+        $stmt = $this->app->pdo()->prepare('SELECT `sessions_valid_after` FROM `accounts` WHERE `public_user_id` = ?');
+        $stmt->execute([self::TARGET]);
+        return $stmt->fetchColumn() ?: null;
+    }
+
+    public function testDieSelbstheilungHoltNurDieTokenSperrendenAufrufeNachUndSetztDanachDieSitzungsgrenze(): void
+    {
+        $this->app->addOpenCall(self::TARGET, 'a');
+        $this->app->addOpenCall(self::TARGET, 'b');
+
+        $result = $this->releaseWith([['op' => 'a', 'outcome' => 'ok'], ['op' => 'b', 'outcome' => 'ok', 'blocking' => true]]);
+
+        $this->assertSame(['b'], $result['calls'], 'die uebrigen Aufrufe holt der Abgleich nach, nicht die Selbstheilung');
+        $this->assertSame(['a' => null], $this->app->openCalls(self::TARGET));
+        $this->assertNotNull($this->boundary(), 'die Grenze rueckt auf den Nachholzeitpunkt');
+    }
+
+    public function testScheitertEinTokenSperrenderAufrufBleibtDieSitzungsgrenzeUnveraendert(): void
+    {
+        $this->app->addOpenCall(self::TARGET, 'a');
+        $this->app->addOpenCall(self::TARGET, 'b');
+
+        $this->releaseWith([['op' => 'a', 'outcome' => 'ok', 'blocking' => true], ['op' => 'b', 'outcome' => 'reject:x:409', 'blocking' => true]]);
+
+        $this->assertSame(['b' => 'x'], $this->app->openCalls(self::TARGET));
+        $this->assertNull($this->boundary());
     }
 
     public function testEinKontoTraegtMehrereOffeneAufrufeMitEigenemCode(): void

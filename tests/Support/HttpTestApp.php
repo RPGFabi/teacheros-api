@@ -206,6 +206,16 @@ final class HttpTestApp
         return ['code' => proc_close($p), 'out' => $out, 'err' => $err];
     }
 
+    /**
+     * Rueckt die Sitzungsgrenze eines Kontos in die Vergangenheit. So kann ein Test-Token entstehen, das nach der Grenze, aber
+     * vor "jetzt" ausgestellt wurde (wie ein Token einer neuen Anmeldung, bevor der erste Request die Grenze beim Nachholen
+     * auf "jetzt" setzt); ein Token aus der Zukunft der Datenbankuhr gibt es im Betrieb nicht.
+     */
+    public function ageSessionBoundary(string $publicUserId, int $seconds = 10): void
+    {
+        $this->pdo()->prepare('UPDATE `accounts` SET `sessions_valid_after` = `sessions_valid_after` - INTERVAL ? SECOND WHERE `public_user_id` = ?')->execute([$seconds, $publicUserId]);
+    }
+
     public function setAccountStatus(string $publicUserId, string $status): void
     {
         $this->pdo()->prepare('UPDATE `accounts` SET `status` = ? WHERE `public_user_id` = ?')->execute([$status, $publicUserId]);

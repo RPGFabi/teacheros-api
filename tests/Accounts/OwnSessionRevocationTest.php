@@ -113,7 +113,7 @@ final class OwnSessionRevocationTest extends TestCase
         $r = $this->revokeOwn();
 
         $this->assertSame([502, 'auth_unavailable'], [$r['status'], $r['json']['code']]);
-        $this->assertStringContainsString('spaeter erneut an', $r['json']['error']);
+        $this->assertStringContainsString('später erneut an', $r['json']['error']);
         $this->assertStringContainsString('Schule', $r['json']['error']);
         $this->assertCount(3, $this->stub->revokeSessionsCalls());
         $this->assertNotNull($this->boundary());
@@ -121,15 +121,30 @@ final class OwnSessionRevocationTest extends TestCase
         $this->assertCount(1, $this->app->auditLog());
     }
 
-    public function testBeiOffenemWiderrufHeiltDerErsteRequestMitNeuemTokenSich(): void
+    public function testEineFachlicheAblehnungWirdOhneWiederholungMitStatusUndCodeDurchgereicht(): void
+    {
+        $this->stub->script('revoke-sessions', ['status' => 400, 'body' => ['error' => 'x', 'code' => 'invalid_request_body']]);
+
+        $r = $this->revokeOwn();
+
+        $this->assertSame([400, 'invalid_request_body'], [$r['status'], $r['json']['code']], 'kein 502: der Dienst ist erreichbar und hat abgelehnt');
+        $this->assertCount(1, $this->stub->revokeSessionsCalls(), 'ein Wiederholen aendert eine fachliche Ablehnung nicht');
+        $this->assertSame(['revoke_sessions' => 'invalid_request_body'], $this->app->openCalls(self::ACCOUNT));
+        $this->assertNotNull($this->boundary(), 'der Widerruf bleibt lokal bestehen');
+    }
+
+    public function testBeiOffenemWiderrufHeiltDerErsteRequestMitTokenNachDerGrenzeSichUndLehntDasTokenAb(): void
     {
         $this->scriptUnavailable(3);
         $this->revokeOwn();
+        $this->app->ageSessionBoundary(self::ACCOUNT);
 
-        $first = $this->as(self::ACCOUNT, 'GET', '/api/me', ['iat' => time() + 5]);
+        $first = $this->as(self::ACCOUNT, 'GET', '/api/me', ['iat' => time() - 5]);
+        $login = $this->as(self::ACCOUNT, 'GET', '/api/me', ['iat' => time() + 5]);
 
-        $this->assertSame(200, $first['status']);
+        $this->assertSame([401, 'session_revoked'], [$first['status'], $first['json']['code']]);
         $this->assertSame([], $this->app->openCalls(self::ACCOUNT));
+        $this->assertSame(200, $login['status'], 'die erneute Anmeldung gelingt');
         $this->assertCount(1, $this->app->auditLog(), 'das Nachholen schreibt keinen Audit-Eintrag');
     }
 

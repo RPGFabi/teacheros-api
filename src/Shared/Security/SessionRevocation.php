@@ -34,15 +34,16 @@ final class SessionRevocation
      *
      * @param int $attempts so oft wird G3 hoechstens versucht, bis es gelingt (mindestens 1); "Mein Konto" nimmt drei (Ticket #50)
      * @param (callable(Account): ?CodedException)|null $precondition laeuft in der Transaktion nach dem Sperren der Kontozeile; eine Ablehnung bricht ab, ohne etwas zu aendern
-     * @return bool true, wenn der Anmeldedienst den Widerruf bestaetigt hat; false, wenn der Aufruf offen bleibt (Nichterreichbarkeit oder fachliche Ablehnung)
+     * @return CodedException|null null, wenn der Anmeldedienst den Widerruf bestaetigt hat; sonst der Grund, warum der Aufruf offen bleibt
+     *                             (nicht erreichbar: `auth_unavailable`; sonst die fachliche Ablehnung mit Status und Code, nicht wiederholt)
      * @throws CodedException `account_not_found` (404) oder die Ablehnung von $precondition
      */
-    public function revoke(Actor $actor, string $accountId, RevocationInitiator $initiator, int $attempts = 1, ?callable $precondition = null): bool
+    public function revoke(Actor $actor, string $accountId, RevocationInitiator $initiator, int $attempts = 1, ?callable $precondition = null): ?CodedException
     {
         return (new SessionTermination($this->audit, $this->accounts, $this->authService))->terminate(
             $actor,
             $accountId,
-            RevokeSessionsCall::OPERATION,
+            SessionEndingCall::REVOKE_SESSIONS,
             AuditLog::ACCOUNT_SESSIONS_REVOKED,
             ['initiated_by' => $initiator->value],
             $attempts,

@@ -35,7 +35,7 @@ final class AuditLog
     public const ACCOUNT_SESSIONS_REVOKED = 'account.sessions_revoked';
 
     /** Die Verwaltung hat das TOTP eines Kontos zurueckgesetzt (Ticket #49); ohne Kontext (ob TOTP eingerichtet war, ist bei gescheitertem Abgleich unbekannt). */
-    public const ACCOUNT_MFA_RESET = 'account.mfa_reset';
+    public const ACCOUNT_TOTP_RESET = 'account.totp_reset';
 
     public const PERMISSION_GRANTED = 'permission.granted';
     public const PERMISSION_WITHDRAWN = 'permission.withdrawn';

@@ -42,8 +42,8 @@ final class OpenCalls
 
     /**
      * Alle Aufrufe, die ein Konto offen tragen kann, in der festen Reihenfolge des Nachholens: Sperre, Sitzungswiderruf,
-     * TOTP-Zuruecksetzung (ADR 0002 Nachtrag #16). Widerruf (#48) und Zuruecksetzung (#49) tragen
-     * ihren Handler hier ein und markieren ihn als {@see TokenBlockingCall}.
+     * TOTP-Zuruecksetzung (ADR 0002 Nachtrag #16). Widerruf (#48) und Zuruecksetzung (#49)
+     * sind {@see SessionEndingCall}s und {@see TokenBlockingCall}s.
      *
      * @return list<OpenCallHandler>
      */
@@ -51,8 +51,8 @@ final class OpenCalls
     {
         return [
             new DisableLoginCall(),
-            new RevokeSessionsCall(),
-            new ResetMfaCall(),
+            SessionEndingCall::revokeSessions(),
+            SessionEndingCall::resetTotp(),
         ];
     }
 
@@ -84,28 +84,41 @@ final class OpenCalls
     }
 
     /**
-     * Der Versuch beim ersten Request mit einem neuen Token ({@see AuthenticationMiddleware}, ADR 0002 Nachtrag #16, Ticket #48):
-     * holt die offenen Aufrufe des Kontos nach (wie {@see self::attempt()}) und liest das Konto danach frisch. Gelingt es, sperrt
-     * {@see self::blocksTokens()} nicht mehr und das Konto ist sofort nutzbar. Wer es nutzt, darf keine Transaktion offen haben.
+     * Die Selbstheilung beim ersten Request mit einem Token nach der Sitzungsgrenze ({@see AuthenticationMiddleware}, ADR 0002
+     * Nachtrag #16, Tickets #48, #49): holt nur die {@see TokenBlockingCall}s des Kontos nach (Widerruf, TOTP-Zuruecksetzung; die
+     * Sperre braucht keinen Nachholversuch, ein gesperrtes Konto wird ohnehin abgelehnt) und liest das Konto danach frisch.
+     * Gelingen alle, sperrt {@see self::blocksTokens()} nicht mehr, und die Sitzungsgrenze rueckt in derselben Transaktion auf den
+     * Nachholzeitpunkt: auch das Token, das den Versuch ausgeloest hat, ist dann widerrufen und die Person meldet sich neu an.
+     * Erst diese Anmeldung entsteht nach der Zuruecksetzung (ohne altes TOTP); ein Token aus der Zeit des offenen Aufrufs gilt nicht.
+     * Wer es nutzt, darf keine Transaktion offen haben.
      *
      * @return Account|null das Konto nach dem Versuch; null, wenn es nicht mehr existiert
      */
     public function releaseTokens(string $accountId): ?Account
     {
-        $this->attempt($accountId);
+        try {
+            $this->run($accountId, tokenBlockingOnly: true);
+        } catch (CodedException) {
+            // Die Aufrufe bleiben offen und sperren weiter; das Konto wird abgelehnt.
+        }
         return $this->accounts->findByPublicUserId($accountId);
     }
 
     /**
      * Der erste Abgleich, direkt nach dem lokalen Commit der Wirkung. Jeder Fehler (Netz, Zeitueberschreitung, 5xx,
      * unlesbare oder fachlich ablehnende Antwort) laesst die Wirkung und die offenen Aufrufe bestehen und wirft nicht.
+     *
+     * @return CodedException|null der Fehler des ersten gescheiterten Aufrufs ({@see AuthServiceUnavailableException}: nicht erreichbar,
+     *                             sonst die fachliche Ablehnung mit Status und Code); null, wenn nichts scheiterte. Die Aufrufe bleiben
+     *                             offen; ein Verwalter wiederholt den Abgleich (oder Ticket #39 automatisch).
      */
-    public function attempt(string $accountId): void
+    public function attempt(string $accountId): ?CodedException
     {
         try {
             $this->run($accountId);
-        } catch (CodedException) {
-            // Die Aufrufe bleiben offen; ein Verwalter wiederholt den Abgleich (oder Ticket #39 automatisch).
+            return null;
+        } catch (CodedException $e) {
+            return $e;
         }
     }
 
@@ -121,7 +134,8 @@ final class OpenCalls
         $this->run($accountId);
     }
 
-    private function run(string $accountId): void
+    /** @param bool $tokenBlockingOnly nur die {@see TokenBlockingCall}s nachholen und danach die Sitzungsgrenze setzen ({@see self::releaseTokens()}) */
+    private function run(string $accountId, bool $tokenBlockingOnly = false): void
     {
         $pdo = DB::getInstance();
         if ($pdo->inTransaction()) {
@@ -135,7 +149,12 @@ final class OpenCalls
             foreach ($this->handlers as $handler) {
                 $handlers[$handler->operation()] = $handler;
             }
-            $open = array_values(array_filter($this->ordered($account->openCalls), static fn (OpenCall $call) => isset($handlers[$call->operation])));
+            $open = array_values(array_filter(
+                $this->ordered($account->openCalls),
+                static fn (OpenCall $call) => isset($handlers[$call->operation]) && (!$tokenBlockingOnly || $handlers[$call->operation] instanceof TokenBlockingCall),
+            ));
+            $blocking = count(array_filter($open, static fn (OpenCall $call) => !$handlers[$call->operation]->isObsolete($account)));
+            $released = 0;
 
             $attempted = false;
             foreach ($open as $call) {
@@ -148,6 +167,7 @@ final class OpenCalls
                 try {
                     $handler->execute($account, $this->authService);
                     $this->accounts->removeOpenCall($accountId, $call->operation);
+                    $released++;
                 } catch (AuthServiceUnavailableException $e) {
                     $failure ??= $e;
                     break;
@@ -155,6 +175,9 @@ final class OpenCalls
                     $this->accounts->rejectOpenCall($accountId, $call->operation, $e->errorCode);
                     $failure ??= $e;
                 }
+            }
+            if ($tokenBlockingOnly && $blocking > 0 && $released === $blocking) {
+                $this->accounts->revokeSessions($accountId);
             }
             if (!$attempted && $failure === null) {
                 $failure = new CodedException('sync_not_pending', 409, 'Es ist kein Abgleich mit dem Anmeldedienst offen.');

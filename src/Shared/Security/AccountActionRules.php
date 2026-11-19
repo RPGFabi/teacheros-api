@@ -7,10 +7,11 @@ namespace TeacherOS\Shared\Security;
 use TeacherOS\Shared\Exceptions\CodedException;
 
 /**
- * Der gemeinsame Kern der Regeln fuer Aktionen am Konto (ADR 0002 B2 und Nachtrag #12): das Recht der Aktion
- * (403 `forbidden`; `accounts.deactivate`, `accounts.revoke_sessions`), nicht an sich selbst (409 `self_deactivation` / `self_reactivation` / `self_revocation`) und P2 (403 `permission_not_held`),
- * samt Meldungstexten. {@see AccountDeactivationRules} und {@see AccountReactivationRules} setzen Status und weitere Regeln
- * obendrauf; die Lesesicht ({@see AccountAccessView}) baut keine eigenen Meldungen.
+ * Der gemeinsame Kern der Regeln fuer Aktionen am Konto (ADR 0002 B2 und Nachtrag #12, #16): das Recht der Aktion
+ * (403 `forbidden`; {@see AccountAction::right()}), nicht an sich selbst (409, Code je Aktion: {@see AccountAction::selfCode()}) und P2
+ * (403 `permission_not_held`), samt Meldungstexten. {@see AccountDeactivationRules}, {@see AccountReactivationRules},
+ * {@see AccountRevocationRules} und {@see AccountTotpResetRules} setzen Status und weitere Regeln obendrauf; die Lesesicht
+ * ({@see AccountAccessView}) baut keine eigenen Meldungen.
  *
  * Eine Instanz gilt fuer einen Akteur und eine Aktion; Rechte liest sie frisch aus der Datenbank.
  */

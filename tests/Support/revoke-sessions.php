@@ -18,10 +18,10 @@ require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
 Application::initialize(dirname(__DIR__, 2));
 Config::load();
 
-$completed = (new SessionRevocation())->revoke(
+$failure = (new SessionRevocation())->revoke(
     Actor::account($argv[1]),
     $argv[1],
     RevocationInitiator::from($argv[3] === 'self' ? 'self' : 'admin'),
     (int) $argv[2],
 );
-echo json_encode(['completed' => $completed]) . "\n";
+echo json_encode(['completed' => $failure === null]) . "\n";

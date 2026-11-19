@@ -92,7 +92,8 @@ final class AuthenticationMiddleware
         }
         // Solange ein Widerruf (oder eine TOTP-Zuruecksetzung) beim Anmeldedienst offen ist, leben dessen Refresh-Tokens und
         // koennten neue Tokens erzeugen: jedes Token des Kontos ist abgelehnt. Der erste Request mit einem Token nach der
-        // Sitzungsgrenze holt die offenen Aufrufe nach; gelingt das, ist das Konto sofort nutzbar (Nachtrag #16, Ticket #48).
+        // Sitzungsgrenze holt die offenen Aufrufe nach; gelingt das, rueckt die Grenze auf den Nachholzeitpunkt und auch dieses
+        // Token ist widerrufen: die Person meldet sich neu an (Nachtrag #16, Tickets #48, #49).
         $openCalls = new OpenCalls();
         if ($openCalls->blocksTokens($account)) {
             $account = $openCalls->releaseTokens($account->publicUserId) ?? $account;

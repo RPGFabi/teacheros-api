@@ -64,6 +64,16 @@ final class SessionRevocationTest extends TestCase
         return $this->as($sub, 'GET', '/api/me', ['iat' => time() + 5]);
     }
 
+    /**
+     * Ein Token, das nach der Sitzungsgrenze, aber vor "jetzt" ausgestellt wurde: der erste Request damit loest das Nachholen
+     * aus, das die Grenze auf "jetzt" setzt (ADR 0002 Nachtrag #16).
+     */
+    private function meAfterBoundary(string $sub = self::TARGET): array
+    {
+        $this->app->ageSessionBoundary($sub);
+        return $this->as($sub, 'GET', '/api/me', ['iat' => time() - 5]);
+    }
+
     private function boundary(string $id = self::TARGET): ?string
     {
         $stmt = $this->app->pdo()->prepare('SELECT `sessions_valid_after` FROM `accounts` WHERE `public_user_id` = ?');
@@ -192,26 +202,39 @@ final class SessionRevocationTest extends TestCase
         $this->assertCount(1, $this->stub->revokeSessionsCalls(), 'nur der erste Versuch der Verwaltung, keiner fuer ein altes Token');
     }
 
-    public function testDerErsteRequestMitNeuemTokenHoltDenOffenenWiderrufNachDanachHatDasKontoWiederZugriff(): void
+    public function testDerErsteRequestMitTokenNachDerGrenzeHoltDenWiderrufNachUndLehntDasTokenAbDerNeueLoginGelingt(): void
     {
         $this->scriptUnavailable();
         $this->revoke();
 
-        $first = $this->meWithNewToken();
+        $first = $this->meAfterBoundary();
         $second = $this->meWithNewToken();
 
-        $this->assertSame(200, $first['status']);
-        $this->assertSame(200, $second['status']);
+        $this->assertSame([401, 'session_revoked'], [$first['status'], $first['json']['code']], 'die Grenze rueckt auf den Nachholzeitpunkt: auch das Token, das den Versuch ausloest, ist widerrufen');
+        $this->assertSame([], $this->app->openCalls(self::TARGET), 'der Widerruf ist nachgeholt');
+        $this->assertSame(200, $second['status'], 'ein neuer Login nach dem Nachholen gelingt');
         $this->assertCount(2, $this->stub->revokeSessionsCalls(), 'ein Nachholversuch, danach ist nichts mehr offen');
-        $this->assertSame([], $this->app->openCalls(self::TARGET));
         $this->assertCount(1, $this->app->auditLog(), 'das Nachholen schreibt keinen Audit-Eintrag');
+    }
+
+    public function testDasTokenAusDerZeitVorDemNachholenBleibtAuchNachDemNachholenWiderrufen(): void
+    {
+        $this->scriptUnavailable();
+        $this->revoke();
+        $triggering = $this->meAfterBoundary();
+        $this->assertSame(401, $triggering['status']);
+
+        $again = $this->as(self::TARGET, 'GET', '/api/me', ['iat' => time() - 5]);
+
+        $this->assertSame([401, 'session_revoked'], [$again['status'], $again['json']['code']]);
+        $this->assertCount(2, $this->stub->revokeSessionsCalls(), 'das zweite Mal ohne Nachholversuch: es ist nichts mehr offen');
     }
 
     public function testNachDemNachholenBleibenAlteTokensWiderrufen(): void
     {
         $this->scriptUnavailable();
         $this->revoke();
-        $this->meWithNewToken();
+        $this->meAfterBoundary();
 
         $old = $this->as(self::TARGET, 'GET', '/api/me', ['iat' => time() - 60]);
 
@@ -235,8 +258,9 @@ final class SessionRevocationTest extends TestCase
         $this->stub->script('revoke-sessions', ['status' => 400, 'body' => ['error' => 'x', 'code' => 'invalid_request_body']]);
         $this->revoke();
 
-        $this->assertSame(200, $this->meWithNewToken()['status'], 'das Nachholen gelingt, der Dienst antwortet nun wie gewohnt');
+        $this->assertSame(401, $this->meAfterBoundary()['status'], 'das Nachholen gelingt, das Token ist dennoch widerrufen');
         $this->assertSame([], $this->app->openCalls(self::TARGET));
+        $this->assertSame(200, $this->meWithNewToken()['status'], 'der neue Login gelingt');
     }
 
     // ---- Abgleich wiederholen und Bausteine fuer #49 und #50 -------------------------------------
