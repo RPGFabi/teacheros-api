@@ -245,6 +245,23 @@ Zweites Stammdaten-Ticket (Spec #17; Glossar: Klasse, Klassenstufe). Neue Rechte
 - Archivieren, Bearbeiten und Löschen von Klassen folgen mit #56/#57.
 - Web: Seite „Klassen“ (`src/classes/`, Menüpunkt nur mit `classes.view`, Formular nur mit `classes.manage`, Schuljahr-Auswahl) und der Abschnitt „Klassen“ in der Detailansicht eines Schuljahres.
 
+## Schuljahr bearbeiten und löschen (Ticket #56)
+
+Dritter Teil der Stammdaten (Spec #17). Kein neues Recht und keine Migration: beide Wege verlangen `school_years.manage` (sonst `403 forbidden`, Modulprüfung zuerst, Routen über `ModuleGate::route()`). Schuljahre werden nie archiviert. Nur GET/POST (CORS), darum `POST …/update` und `POST …/delete` wie bei den Rollen.
+
+| Endpunkt | Recht | Body | Antwort |
+|---|---|---|---|
+| `POST /api/school-years/{id}/update` | `school_years.manage` | `{starts_on, ends_on}` (wie beim Anlegen) | `200 {"school_year": {id, name, starts_on, ends_on, status}}`; die Bezeichnung folgt dem neuen Zeitraum, die Kennung bleibt |
+| `POST /api/school-years/{id}/delete` | `school_years.manage` | – | `200 {"deleted": true, "id": "<Kennung>"}` |
+
+- **Ändern:** dieselben Regeln wie beim Anlegen (Tage im Format `JJJJ-MM-TT`, Ende im Kalenderjahr nach dem Beginn, keine Überschneidung mit *anderen* Schuljahren; der eigene alte Zeitraum zählt nicht). Ein unveränderter Zeitraum ist erlaubt. Ein Schuljahr mit Klassen darf bearbeitet werden.
+- **Löschen:** abgelehnt, sobald das Schuljahr Klassen hat, **alle** Klassen des Schuljahres zählen, auch archivierte (Fremdschlüssel `classes.school_year_id` sichert es zusätzlich ab).
+- **Fehler:** `400 invalid_request`, `422 invalid_period`, `404 school_year_not_found`, `409 school_year_overlap`, `409 school_year_has_classes` (Löschen mit Klassen), `409 school_year_in_use` (Auffangnetz: der Fremdschlüssel schlug zwischen Prüfung und Löschen zu, z. B. durch eine gleichzeitig angelegte Klasse), `409 <Code eines Moduls>` (Einwand einer angemeldeten Prüfung), `503 school_years_busy`, `403 forbidden`, `401`; hinter nicht freigegebenem Modul `403 module_disabled`.
+- **Erweiterbare Prüfung** (Source of Truth: Erweiterbarkeit): Module mit Bezug auf Schuljahre (#18, #19, …) hängen ihren Einwand gegen Ändern und Löschen an, ohne `SchoolYears` zu ändern. Interface `SchoolYearGuard` (`objectionToUpdate(year, newPeriod)`, `objectionToDeletion(year)`, je `?SchoolYearObjection{code, message}`), Anmeldung mit `SchoolYearGuards::register()` in `AppBootstrap::registerRoutes`; der erste Einwand gewinnt und wird zu `409` mit seinem Code und seiner Meldung. Die Prüfungen laufen unter der Schuljahr-Sperre in der Transaktion der Änderung. Die Klassen-Sperre ist selbst so angemeldet (`Modules/Classes/ClassesSchoolYearGuard`, Code `school_year_has_classes`); ihr Einwand gegen das Ändern ist leer. Die Test-Prüfung steht in `tests/Support/module-probe-routes.php` (Einwand gegen Schuljahre, die 2095 beginnen).
+- **Audit:** `school_year.updated` (Kontext `old_name`, `name`) und `school_year.deleted` (Kontext `name`), Objekt `school_year`, Objekt-ID = Kennung. Auch ein unveränderter Zeitraum schreibt einen Eintrag.
+- Tests: `tests/SchoolYears/SchoolYearsUpdateDeleteTest.php`.
+- Web: Schaltflächen „Bearbeiten“ und „Löschen“ (mit Bestätigung) je Zeile der Seite „Schuljahre“, nur mit `school_years.manage`; Ablehnungen werden mit verständlichem Text angezeigt.
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)

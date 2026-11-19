@@ -13,8 +13,10 @@ use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
+use TeacherOS\Modules\Classes\ClassesSchoolYearGuard;
 use TeacherOS\Modules\Classes\ClassRoutes;
 use TeacherOS\Modules\Roles\RolesController;
+use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
 use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Shared\Modules\ModuleEntitlements;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
@@ -93,6 +95,8 @@ final class AppBootstrap
         SchoolYearRoutes::register($router);
         // Klassen (Ticket #55): ebenfalls `core`.
         ClassRoutes::register($router);
+        // Einwaende gegen Aendern und Loeschen eines Schuljahres (Ticket #56): jedes Modul mit Bezug auf Schuljahre meldet seine Pruefung hier an.
+        SchoolYearGuards::register(new ClassesSchoolYearGuard());
 
         self::registerTestRoutes($router);
     }

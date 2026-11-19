@@ -26,4 +26,18 @@ final class SchoolYearsController
         $year = (new SchoolYears())->create(AuthenticationMiddleware::actor(), $period);
         $response->json(['school_year' => $year], 201);
     }
+
+    public static function update(Request $request, Response $response): void
+    {
+        $period = SchoolYearPeriod::fromInput($request->getBody('starts_on'), $request->getBody('ends_on'));
+        $year = (new SchoolYears())->update(AuthenticationMiddleware::actor(), (string) $request->getParam('id'), $period);
+        $response->json(['school_year' => $year]);
+    }
+
+    public static function delete(Request $request, Response $response): void
+    {
+        $id = (string) $request->getParam('id');
+        (new SchoolYears())->delete(AuthenticationMiddleware::actor(), $id);
+        $response->json(['deleted' => true, 'id' => $id]);
+    }
 }

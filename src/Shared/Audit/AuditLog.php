@@ -43,6 +43,12 @@ final class AuditLog
     /** Ein Schuljahr wurde angelegt (Ticket #54); Objekt: Kennung des Schuljahres, Kontext: name (Bezeichnung). */
     public const SCHOOL_YEAR_CREATED = 'school_year.created';
 
+    /** Ein Schuljahr wurde bearbeitet (Ticket #56); Objekt: Kennung, Kontext: old_name (alte Bezeichnung), name (neue Bezeichnung). */
+    public const SCHOOL_YEAR_UPDATED = 'school_year.updated';
+
+    /** Ein Schuljahr wurde geloescht (Ticket #56); Objekt: Kennung, Kontext: name (Bezeichnung). */
+    public const SCHOOL_YEAR_DELETED = 'school_year.deleted';
+
     /** Eine Klasse wurde angelegt (Ticket #55); Objekt: Kennung der Klasse, Kontext: name, grade_level, school_year_id. */
     public const CLASS_CREATED = 'class.created';
 
