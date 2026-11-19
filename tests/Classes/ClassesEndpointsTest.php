@@ -207,6 +207,28 @@ final class ClassesEndpointsTest extends TestCase
         $this->assertSame('7a', $this->app->classes()[0]['name']);
     }
 
+    public function testGeschuetztesLeerzeichenAmRandWirdGetrimmtUndBelegtDieBezeichnung(): void
+    {
+        $r = $this->createClass(7, "\u{00A0}7a\u{00A0}");
+
+        $this->assertSame('7a', $r['json']['class']['name']);
+        $this->assertSame('class_name_taken', $this->createClass(7, '7A')['json']['code']);
+    }
+
+    public function testBezeichnungWirdVorDemVergleichNormalisiert(): void
+    {
+        if (!class_exists(\Normalizer::class)) {
+            $this->markTestSkipped('ext-intl fehlt: ohne sie wird nicht normalisiert (docs/workspace.md).');
+        }
+        $this->assertSame(201, $this->createClass(7, "7\u{00E4}")['status']);
+
+        $r = $this->createClass(7, "7a\u{0308}");
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('class_name_taken', $r['json']['code'], 'zusammengesetztes und zerlegtes ä sind dieselbe Bezeichnung');
+        $this->assertSame("7\u{00E4}", $this->app->classes()[0]['name']);
+    }
+
     public function testGleicheBezeichnungInEinemAnderenSchuljahrIstErlaubt(): void
     {
         $other = $this->createYear('2091-08-01', '2092-07-31');
@@ -241,6 +263,8 @@ final class ClassesEndpointsTest extends TestCase
         yield 'ohne Bezeichnung' => [['grade_level' => 7]];
         yield 'leere Bezeichnung' => [['grade_level' => 7, 'name' => '']];
         yield 'nur Leerzeichen' => [['grade_level' => 7, 'name' => '   ']];
+        yield 'nur geschuetzte Leerzeichen' => [['grade_level' => 7, 'name' => "\u{00A0}\u{00A0}"]];
+        yield 'nur unsichtbare Zeichen' => [['grade_level' => 7, 'name' => "\u{200B}\u{FEFF}"]];
         yield 'Bezeichnung 21 Zeichen' => [['grade_level' => 7, 'name' => str_repeat('a', 21)]];
         yield 'Bezeichnung 21 Umlaute' => [['grade_level' => 7, 'name' => str_repeat('ä', 21)]];
         yield 'Bezeichnung keine Zeichenkette' => [['grade_level' => 7, 'name' => 7]];
