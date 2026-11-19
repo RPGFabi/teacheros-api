@@ -12,8 +12,11 @@ use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Uuid;
 
 /**
- * Klassen ansehen und anlegen (Ticket #55, GLOSSARY.md: Klasse). Jede Klasse gehoert unveraenderlich zu einem Schuljahr
- * und traegt dessen Kennung und Bezeichnung mit. Schuljahre und ihr Status kommen aus {@see SchoolYears}, nicht von hier.
+ * Klassen ansehen, anlegen (Ticket #55), bearbeiten, archivieren, wiederherstellen und loeschen (Ticket #57,
+ * GLOSSARY.md: Klasse, Archivierung). Jede Klasse gehoert unveraenderlich zu einem Schuljahr und traegt dessen Kennung und
+ * Bezeichnung mit. Schuljahre und ihr Status kommen aus {@see SchoolYears}, nicht von hier. Archivierte Klassen bleiben
+ * lesbar und ihre Bezeichnung belegt, sind aber schreibgeschuetzt und nicht waehlbar. Geloescht wird nur, was nirgends
+ * verknuepft ist; die Verknuepfungen melden spaetere Module ueber {@see ClassLinkRegistry} an.
  */
 final class Classes
 {
@@ -23,6 +26,7 @@ final class Classes
         private readonly ClassRepository $repository = new ClassRepository(),
         private readonly SchoolYears $schoolYears = new SchoolYears(),
         private readonly AuditLog $audit = new AuditLog(),
+        private readonly ?ClassLinkRegistry $links = null,
     ) {
     }
 
@@ -38,38 +42,175 @@ final class Classes
 
     /**
      * Die Klassen eines Schuljahres: nach Klassenstufe, dann natuerlich nach Bezeichnung (7a, 7b, ..., 10a).
+     * Archivierte Klassen nur mit $includeArchived.
      *
-     * @return list<array{id:string,grade_level:int,name:string,school_year:array{id:string,name:string}}>
+     * @return list<array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}>
      * @throws CodedException `school_year_not_found` (404)
      */
-    public function listIn(string $schoolYearId): array
+    public function listIn(string $schoolYearId, bool $includeArchived = false): array
     {
         $year = $this->schoolYear($schoolYearId);
-        $rows = $this->repository->inSchoolYear($schoolYearId);
+        $rows = $this->repository->inSchoolYear($schoolYearId, $includeArchived);
         usort($rows, static fn (array $a, array $b): int => ($a['grade_level'] <=> $b['grade_level']) ?: strnatcasecmp($a['name'], $b['name']));
         return array_map(static fn (array $r): array => self::present($r, $year), $rows);
+    }
+
+    /**
+     * Die fuer neue Zuordnungen waehlbaren Klassen, also ohne archivierte: eines Schuljahres oder aller Schuljahre
+     * (dann nach Beginn des Schuljahres, innerhalb davon wie {@see self::listIn()}). Spaetere Module fragen hier ab.
+     *
+     * @return list<array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}>
+     * @throws CodedException `school_year_not_found` (404)
+     */
+    public function selectable(?string $schoolYearId = null): array
+    {
+        if ($schoolYearId !== null) {
+            return $this->listIn($schoolYearId);
+        }
+        $classes = [];
+        foreach ($this->schoolYears->list() as $year) {
+            array_push($classes, ...$this->listIn($year['id']));
+        }
+        return $classes;
     }
 
     /**
      * Legt eine Klasse in einem beliebigen Schuljahr an (laufend, kommend oder vergangen). Die Eindeutigkeit der Bezeichnung
      * sichert der eindeutige Schluessel der Tabelle; Anlegen und Audit-Eintrag `class.created` laufen in einer Transaktion.
      *
-     * @return array{id:string,grade_level:int,name:string,school_year:array{id:string,name:string}}
+     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
      * @throws CodedException `school_year_not_found` (404), `class_name_taken` (409)
      */
     public function create(Actor $actor, ClassInput $input): array
     {
         $year = $this->schoolYear($input->schoolYearId);
         $id = Uuid::v4();
+        $this->inTransaction(function () use ($id, $input, $actor): void {
+            $this->repository->insert($id, $input);
+            $this->audit->record($actor, AuditLog::CLASS_CREATED, 'class', $id, [
+                'name' => $input->change->name,
+                'grade_level' => $input->change->gradeLevel,
+                'school_year_id' => $input->schoolYearId,
+            ]);
+        });
+        return self::present(['id' => $id, 'grade_level' => $input->change->gradeLevel, 'name' => $input->change->name, 'archived' => false], $year);
+    }
+
+    /**
+     * Aendert Klassenstufe und Bezeichnung nach denselben Regeln wie beim Anlegen. Das Schuljahr ist nicht aenderbar:
+     * ein abweichendes `$claimedSchoolYearId` wird abgelehnt. Eine archivierte Klasse ist schreibgeschuetzt.
+     *
+     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @throws CodedException `class_not_found` (404), `class_archived` (409), `class_name_taken` (409), `invalid_request` (400)
+     */
+    public function update(Actor $actor, string $id, ClassChange $change, mixed $claimedSchoolYearId = null): array
+    {
+        $before = null;
+        $this->inTransaction(function () use ($id, $change, $actor, $claimedSchoolYearId, &$before): void {
+            $before = $this->lockedClass($id);
+            if ($claimedSchoolYearId !== null && $claimedSchoolYearId !== $before['school_year_id']) {
+                throw new CodedException('invalid_request', 400, 'Das Schuljahr einer Klasse lässt sich nicht ändern.');
+            }
+            if ($before['archived']) {
+                throw new CodedException('class_archived', 409, 'Die Klasse ist archiviert und kann nicht geändert werden. Bitte zuerst wiederherstellen.');
+            }
+            $this->repository->update($id, $change);
+            $this->audit->record($actor, AuditLog::CLASS_UPDATED, 'class', $id, [
+                'name' => $change->name,
+                'grade_level' => $change->gradeLevel,
+                'school_year_id' => $before['school_year_id'],
+                'previous_name' => $before['name'],
+                'previous_grade_level' => $before['grade_level'],
+            ]);
+        });
+        return self::present(['id' => $id, 'grade_level' => $change->gradeLevel, 'name' => $change->name, 'archived' => false], $this->schoolYear($before['school_year_id']));
+    }
+
+    /**
+     * Archiviert eine Klasse: sie bleibt lesbar, ihre Bezeichnung belegt, aber sie ist schreibgeschuetzt und nicht waehlbar.
+     * Geht mit und ohne Verknuepfungen.
+     *
+     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @throws CodedException `class_not_found` (404), `class_already_archived` (409)
+     */
+    public function archive(Actor $actor, string $id): array
+    {
+        return $this->setArchived($actor, $id, true);
+    }
+
+    /**
+     * Stellt eine archivierte Klasse wieder her. Ihre Bezeichnung war die ganze Zeit belegt, eine erneute
+     * Eindeutigkeitspruefung ist daher nicht noetig.
+     *
+     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @throws CodedException `class_not_found` (404), `class_not_archived` (409)
+     */
+    public function restore(Actor $actor, string $id): array
+    {
+        return $this->setArchived($actor, $id, false);
+    }
+
+    /**
+     * Loescht eine Klasse endgueltig, solange nichts an ihr haengt (auch eine archivierte). Sonst wird abgelehnt und auf
+     * das Archivieren verwiesen.
+     *
+     * @throws CodedException `class_not_found` (404), `class_linked` (409)
+     */
+    public function delete(Actor $actor, string $id): void
+    {
+        $this->inTransaction(function () use ($id, $actor): void {
+            $class = $this->lockedClass($id);
+            $links = ($this->links ?? ClassLinkRegistry::shared())->linksOf($id);
+            if ($links !== []) {
+                throw new CodedException('class_linked', 409, 'Die Klasse ist verknüpft (' . implode(', ', $links) . ') und kann nicht gelöscht werden. Bitte stattdessen archivieren.');
+            }
+            $this->repository->delete($id);
+            $this->audit->record($actor, AuditLog::CLASS_DELETED, 'class', $id, self::context($class));
+        });
+    }
+
+    /**
+     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     */
+    private function setArchived(Actor $actor, string $id, bool $archived): array
+    {
+        $class = null;
+        $this->inTransaction(function () use ($id, $archived, $actor, &$class): void {
+            $class = $this->lockedClass($id);
+            if ($class['archived'] === $archived) {
+                throw $archived
+                    ? new CodedException('class_already_archived', 409, 'Die Klasse ist bereits archiviert.')
+                    : new CodedException('class_not_archived', 409, 'Die Klasse ist nicht archiviert.');
+            }
+            $this->repository->setArchived($id, $archived);
+            $this->audit->record($actor, $archived ? AuditLog::CLASS_ARCHIVED : AuditLog::CLASS_RESTORED, 'class', $id, self::context($class));
+        });
+        return self::present([...$class, 'archived' => $archived], $this->schoolYear($class['school_year_id']));
+    }
+
+    /**
+     * Die Klasse, fuer die Dauer der laufenden Transaktion gesperrt, damit gleichzeitiges Bearbeiten, Archivieren und
+     * Loeschen sich nicht ueberholt.
+     *
+     * @return array{id:string,school_year_id:string,grade_level:int,name:string,archived:bool}
+     * @throws CodedException `class_not_found` (404)
+     */
+    private function lockedClass(string $id): array
+    {
+        $class = $this->repository->find($id, lock: true);
+        if ($class === null) {
+            throw new CodedException('class_not_found', 404, 'Die Klasse gibt es nicht.');
+        }
+        return $class;
+    }
+
+    /** Fuehrt die Aenderung samt Audit in einer Transaktion aus; doppelte Bezeichnung wird zu `class_name_taken` (409). */
+    private function inTransaction(callable $change): void
+    {
         $pdo = DB::getInstance();
         $pdo->beginTransaction();
         try {
-            $this->repository->insert($id, $input);
-            $this->audit->record($actor, AuditLog::CLASS_CREATED, 'class', $id, [
-                'name' => $input->name,
-                'grade_level' => $input->gradeLevel,
-                'school_year_id' => $input->schoolYearId,
-            ]);
+            $change();
             $pdo->commit();
         } catch (\PDOException $e) {
             $pdo->rollBack();
@@ -81,7 +222,6 @@ final class Classes
             $pdo->rollBack();
             throw $e;
         }
-        return self::present(['id' => $id, 'grade_level' => $input->gradeLevel, 'name' => $input->name], $year);
     }
 
     /**
@@ -98,12 +238,21 @@ final class Classes
     }
 
     /**
-     * @param array{id:string,grade_level:int,name:string} $row
+     * @param array{school_year_id:string,grade_level:int,name:string} $class
+     * @return array{name:string,grade_level:int,school_year_id:string}
+     */
+    private static function context(array $class): array
+    {
+        return ['name' => $class['name'], 'grade_level' => $class['grade_level'], 'school_year_id' => $class['school_year_id']];
+    }
+
+    /**
+     * @param array{id:string,grade_level:int,name:string,archived:bool} $row
      * @param array{id:string,name:string} $year
-     * @return array{id:string,grade_level:int,name:string,school_year:array{id:string,name:string}}
+     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
      */
     private static function present(array $row, array $year): array
     {
-        return ['id' => $row['id'], 'grade_level' => $row['grade_level'], 'name' => $row['name'], 'school_year' => $year];
+        return ['id' => $row['id'], 'grade_level' => $row['grade_level'], 'name' => $row['name'], 'archived' => $row['archived'], 'school_year' => $year];
     }
 }

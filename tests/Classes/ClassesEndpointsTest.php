@@ -183,7 +183,7 @@ final class ClassesEndpointsTest extends TestCase
         $this->assertSame(7, $class['grade_level']);
         $this->assertSame('7a', $class['name']);
         $this->assertSame(['id' => $this->year, 'name' => '2090/91'], $class['school_year']);
-        $this->assertSame(['id', 'grade_level', 'name', 'school_year'], array_keys($class));
+        $this->assertSame(['id', 'grade_level', 'name', 'archived', 'school_year'], array_keys($class));
         $this->assertCount(1, $this->app->classes());
     }
 

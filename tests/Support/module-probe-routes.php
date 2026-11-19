@@ -9,6 +9,9 @@ declare(strict_types=1);
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Bootstrap\ApiRouter;
+use Hoelzle\Core\Database\DB;
+use TeacherOS\Modules\Classes\ClassLinkCheck;
+use TeacherOS\Modules\Classes\ClassLinkRegistry;
 use TeacherOS\Modules\Classes\ClassRoutes;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuard;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
@@ -52,4 +55,20 @@ return static function (ApiRouter $router): void {
     ClassRoutes::register($router, ModuleCatalog::OBSERVE, '/api/test/observe-classes');
     // Die Test-Pruefung haengt hinter die echten Pruefungen (Ticket #56).
     SchoolYearGuards::register(new TestSchoolYearGuard());
+
+    // Test-Verknuepfung (Ticket #57): meldet sich an der Verknuepfungspruefung der Klassen an, wie es spaeter #18/#19 tun;
+    // verknuepft ist, was in `test_class_links` steht (HttpTestApp::linkClass).
+    ClassLinkRegistry::shared()->register(new class implements ClassLinkCheck {
+        public function label(): string
+        {
+            return 'Testverknüpfung';
+        }
+
+        public function isLinked(string $classId): bool
+        {
+            $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_class_links` WHERE `class_id` = :id');
+            $stmt->execute(['id' => $classId]);
+            return $stmt->fetchColumn() !== false;
+        }
+    });
 };
