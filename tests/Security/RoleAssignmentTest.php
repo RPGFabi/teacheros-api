@@ -521,7 +521,8 @@ final class RoleAssignmentTest extends TestCase
         $this->asAdmin();
         $this->target();
         $a = $this->customRole('a', ['accounts.view']);
-        $token = TestTokens::access(self::TARGET);
+        // Die Rolle erfordert MFA (B3, Ticket #15): das Token traegt den zweiten Faktor, damit hier nur die Rechte zaehlen.
+        $token = TestTokens::access(self::TARGET, ['usedMFA' => true]);
         $list = fn () => $this->app->request('GET', '/api/accounts', ['HTTP_AUTHORIZATION' => 'Bearer ' . $token])['status'];
 
         $this->assertSame(403, $list());

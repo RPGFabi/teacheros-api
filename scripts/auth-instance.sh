@@ -127,7 +127,11 @@ write_env() {
   set_env_key "$env" DB_SOCKET ""
   set_env_key "$env" TOKEN_ISSUER "$TOKEN_ISSUER"
   set_env_key "$env" TOKEN_AUDIENCE "$TOKEN_AUDIENCE"
-  set_env_key "$env" USE_MFA false
+  # TOTP ist Pflicht fuer Mitarbeitende und Admins (ADR 0002 B3, Ticket #15): ohne MFA kaemen sie nicht an fachliche Routen.
+  set_env_key "$env" USE_MFA true
+  set_env_key "$env" MFA_ISSUER "\"$SCHOOL_NAME\""
+  set_env_key "$env" MFA_SECRETBOX_ACTIVE_KEY_VERSION 1
+  set_env_key "$env" MFA_SECRETBOX_KEY_V1_BASE64 "$(php -r 'echo base64_encode(random_bytes(32));')"
   set_env_key "$env" MAIL_MODE null
   set_env_key "$env" MAIL_BRAND_NAME "\"$SCHOOL_NAME\""
   set_env_key "$env" MAIL_BRAND_SIGNATURE "\"dein $SCHOOL_NAME-Team\""

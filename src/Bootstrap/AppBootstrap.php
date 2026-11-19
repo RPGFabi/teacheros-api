@@ -47,8 +47,10 @@ final class AppBootstrap
     private static function registerRoutes(ApiRouter $router): void
     {
         $router->get('/api/health', [self::class, 'health']);
+        // Jede fachliche Route setzt die MFA-Pflicht durch (B3); nur /api/me bleibt ohne MFA erreichbar, damit das Web
+        // die Einrichtung anstossen kann.
         $authenticated = [[AuthenticationMiddleware::class, 'handle']];
-        $router->get('/api/me', [self::class, 'me'], $authenticated);
+        $router->get('/api/me', [self::class, 'me'], [[AuthenticationMiddleware::class, 'handleAllowingMfaEnrollment']]);
 
         $router->get('/api/accounts', [AccountsController::class, 'index'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
         $router->post('/api/accounts/invitations', [AccountsController::class, 'invite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
@@ -97,6 +99,8 @@ final class AppBootstrap
             'permissions' => PermissionCatalog::effectiveFor($session->account->publicUserId),
             'session' => [
                 'used_mfa' => $session->token->usedMfa,
+                // B3: ohne zweiten Faktor sind fachliche Routen gesperrt (403 mfa_enrollment_required), bis TOTP eingerichtet und neu angemeldet ist.
+                'mfa_enrollment_required' => $session->account->mfaRequired && !$session->token->usedMfa,
                 'expires_at' => gmdate('c', $session->token->expiresAt),
             ],
         ]);

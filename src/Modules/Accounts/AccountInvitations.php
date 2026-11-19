@@ -14,6 +14,7 @@ use TeacherOS\Shared\Security\AccessAdministration;
 use TeacherOS\Shared\Security\Account;
 use TeacherOS\Shared\Security\AccountRepository;
 use TeacherOS\Shared\Security\AccountStatus;
+use TeacherOS\Shared\Security\MfaRequirementSync;
 
 /**
  * Einladung (GLOSSARY.md): der einzige Weg, auf dem ein Konto entsteht (ADR 0002 G5).
@@ -170,6 +171,8 @@ final class AccountInvitations
             $pdo->rollBack();
             throw $e;
         }
+        // Rollen des ersten Schuladmins oder ersetzter Einladungen aendern die MFA-Pflicht (G2, Ticket #15).
+        (new MfaRequirementSync($this->authService))->pushPending();
     }
 
     /**
