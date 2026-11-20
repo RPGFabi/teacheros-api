@@ -14,6 +14,7 @@ use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
 use TeacherOS\Modules\Roles\RolesController;
+use TeacherOS\Shared\Modules\ModuleEntitlements;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 use TeacherOS\Shared\Security\PermissionCatalog;
 use TeacherOS\Shared\Security\RequirePermission;
@@ -83,6 +84,25 @@ final class AppBootstrap
         $router->post('/api/accounts/:id/permissions/grant', [AccountAccessController::class, 'grantPermission'], $permissionAssigner);
         $router->post('/api/accounts/:id/permissions/withdraw', [AccountAccessController::class, 'withdrawPermission'], $permissionAssigner);
         $router->post('/api/accounts/:id/permissions/clear', [AccountAccessController::class, 'clearPermission'], $permissionAssigner);
+
+        // Alle bisherigen Routen gehoeren zu `core` (immer aktiv). Routen eines Fachmoduls bauen ihre Middleware mit
+        // ModuleGate::route(): Anmeldung, dann Modulfreigabe, dann Rechte (ADR 0002 B5, Ticket #13).
+        self::registerTestRoutes($router);
+    }
+
+    /**
+     * Nur in der Testumgebung: zusaetzliche Routen aus der Datei in TEST_ROUTES (z. B. eine Probe-Route eines
+     * Fachmoduls, solange es noch keine echten Fachrouten gibt). Ausserhalb von APP_ENV=test wirkungslos.
+     */
+    private static function registerTestRoutes(ApiRouter $router): void
+    {
+        if (Config::getString('APP_ENV') !== 'test') {
+            return;
+        }
+        $file = Config::getString('TEST_ROUTES');
+        if ($file !== '' && is_file($file)) {
+            (require $file)($router);
+        }
     }
 
     public static function me(Request $request, Response $response): void
@@ -95,6 +115,8 @@ final class AppBootstrap
                 'mfa_required' => $session->account->mfaRequired,
             ],
             'permissions' => PermissionCatalog::effectiveFor($session->account->publicUserId),
+            // Aktive Module der Schulinstanz (immer mit `core`); das Web blendet danach die Navigation aus (Ticket #13).
+            'modules' => (new ModuleEntitlements())->active(),
             'session' => [
                 'used_mfa' => $session->token->usedMfa,
                 'expires_at' => gmdate('c', $session->token->expiresAt),

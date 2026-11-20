@@ -59,3 +59,13 @@ _Avoid_: Admin, Administrator, Superuser
 **Audit-Eintrag**:
 Ein datensparsamer Nachweis einer administrativen oder sicherheitsrelevanten Handlung: wer, wann, welche Handlung, an welchem Objekt. Er enthält keine Kopie fachlicher Daten.
 _Avoid_: Log, Protokoll, History
+
+## Betrieb
+
+**Modul**:
+Ein abgegrenzter Produktbereich von TeacherOS mit fester Kennung (z. B. `observe` für Beobachtungen). `core` (Stammdaten, Konten, Rollen) gehört zu jeder Schulinstanz und ist immer aktiv.
+_Avoid_: Feature, Plugin, Paket
+
+**Modulfreigabe**:
+Die Festlegung, ob ein Modul an einer Schulinstanz ab einem Zeitpunkt läuft. Sie wird lokal gespeichert, nie überschrieben, sondern um eine neue Version mit Gültigkeitsbeginn ergänzt, und vom Betreiber gesetzt, nicht von der Schule. Eine Modulfreigabe gewährt kein Recht und keinen Zugriff auf Objekte.
+_Avoid_: Lizenz, Feature-Flag, Entitlement, Aktivierung

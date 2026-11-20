@@ -114,6 +114,7 @@ final class HttpTestApp
             'AUTH_PUBLIC_KEY_PATH' => TestTokens::publicKeyPath(),
             'AUTH_TOKEN_ISSUER' => TestTokens::ISSUER,
             'AUTH_TOKEN_AUDIENCE' => TestTokens::AUDIENCE,
+            'TEST_ROUTES' => $this->root . '/tests/Support/module-probe-routes.php',
         ];
     }
 
@@ -129,6 +130,25 @@ final class HttpTestApp
         $this->pdo()->exec('DELETE FROM `permission_user_overrides`');
         $this->pdo()->exec('DELETE FROM `accounts`');
         $this->pdo()->exec('DELETE FROM `audit_log`');
+    }
+
+    /** Entfernt alle Modulfreigaben (Testaufbau): danach ist nur `core` aktiv. */
+    public function resetModules(): void
+    {
+        $this->pdo()->exec('DELETE FROM `module_entitlements`');
+    }
+
+    /** Schreibt eine Freigabe-Version direkt in die DB (Testaufbau, z. B. mit Beginn in der Vergangenheit). */
+    public function insertEntitlement(string $moduleId, bool $enabled, string $validFromUtc): void
+    {
+        $this->pdo()->prepare('INSERT INTO `module_entitlements` (`module_id`, `enabled`, `valid_from`) VALUES (?, ?, ?)')
+            ->execute([$moduleId, $enabled ? 1 : 0, $validFromUtc]);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function moduleEntitlements(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `module_entitlements` ORDER BY `id`')->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /** Vergibt eine vorhandene Rolle direkt in der DB (Testaufbau, nicht der fachliche Weg). */

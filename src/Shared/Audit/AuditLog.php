@@ -35,6 +35,11 @@ final class AuditLog
     public const PERMISSION_WITHDRAWN = 'permission.withdrawn';
     public const PERMISSION_OVERRIDE_CLEARED = 'permission.override_cleared';
 
+    /** Ein Modul wurde an der Schulinstanz freigegeben (Ticket #13); Objekt: Modul-ID, Kontext: valid_from (UTC). */
+    public const MODULE_ENABLED = 'module.enabled';
+    /** Die Freigabe eines Moduls wurde zurueckgenommen (Ticket #13); Objekt: Modul-ID, Kontext: valid_from (UTC). */
+    public const MODULE_DISABLED = 'module.disabled';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {
