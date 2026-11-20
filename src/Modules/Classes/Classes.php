@@ -17,7 +17,7 @@ use TeacherOS\Shared\Uuid;
  * GLOSSARY.md: Klasse, Archivierung). Jede Klasse gehoert unveraenderlich zu einem Schuljahr und traegt dessen Kennung und
  * Bezeichnung mit. Schuljahre und ihr Status kommen aus {@see SchoolYears}, nicht von hier. Archivierte Klassen bleiben
  * lesbar und ihre Bezeichnung belegt, sind aber schreibgeschuetzt und nicht waehlbar. Geloescht wird nur, was nirgends
- * verknuepft ist; die Verknuepfungen melden spaetere Module ueber {@see ClassLinkRegistry} an.
+ * verknuepft ist; die Verknuepfungen melden spaetere Module ueber {@see ClassLinkGuards} an.
  */
 final class Classes
 {
@@ -25,7 +25,7 @@ final class Classes
         private readonly ClassRepository $repository = new ClassRepository(),
         private readonly SchoolYears $schoolYears = new SchoolYears(),
         private readonly AuditLog $audit = new AuditLog(),
-        private readonly ?ClassLinkRegistry $links = null,
+        private readonly ClassLinkGuards $linkGuards = new ClassLinkGuards(),
     ) {
     }
 
@@ -153,10 +153,7 @@ final class Classes
     {
         $this->inTransaction(function () use ($id, $actor): void {
             $class = $this->lockedClass($id);
-            $links = ($this->links ?? ClassLinkRegistry::shared())->linksOf($id);
-            if ($links !== []) {
-                throw new CodedException('class_linked', 409, 'Die Klasse ist verknüpft (' . implode(', ', $links) . ') und kann nicht gelöscht werden. Bitte stattdessen archivieren.');
-            }
+            $this->linkGuards->assertDeletable($id);
             $this->repository->delete($id);
             $this->audit->record($actor, AuditLog::CLASS_DELETED, 'class', $id, ['name' => $class['name']]);
         });

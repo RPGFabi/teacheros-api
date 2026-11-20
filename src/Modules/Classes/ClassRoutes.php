@@ -17,17 +17,17 @@ use TeacherOS\Shared\Security\RequirePermission;
  */
 final class ClassRoutes
 {
-    public static function register(ApiRouter $router, string $moduleId = ModuleCatalog::CORE, string $path = '/api/classes'): void
+    public static function register(ApiRouter $router, ClassesController $controller, string $moduleId = ModuleCatalog::CORE, string $path = '/api/classes'): void
     {
         $view = ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::CLASSES_VIEW)]);
-        $router->get($path, [ClassesController::class, 'index'], $view);
-        $router->get($path . '/school-years', [ClassesController::class, 'schoolYears'], $view);
-        $router->get($path . '/selectable', [ClassesController::class, 'selectable'], $view);
+        $router->get($path, [$controller, 'index'], $view);
+        $router->get($path . '/school-years', [$controller, 'schoolYears'], $view);
+        $router->get($path . '/selectable', [$controller, 'selectable'], $view);
         $manage = ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::CLASSES_MANAGE)]);
-        $router->post($path, [ClassesController::class, 'create'], $manage);
-        $router->post($path . '/:id/update', [ClassesController::class, 'update'], $manage);
-        $router->post($path . '/:id/archive', [ClassesController::class, 'archive'], $manage);
-        $router->post($path . '/:id/restore', [ClassesController::class, 'restore'], $manage);
-        $router->post($path . '/:id/delete', [ClassesController::class, 'delete'], $manage);
+        $router->post($path, [$controller, 'create'], $manage);
+        $router->post($path . '/:id/update', [$controller, 'update'], $manage);
+        $router->post($path . '/:id/archive', [$controller, 'archive'], $manage);
+        $router->post($path . '/:id/restore', [$controller, 'restore'], $manage);
+        $router->post($path . '/:id/delete', [$controller, 'delete'], $manage);
     }
 }

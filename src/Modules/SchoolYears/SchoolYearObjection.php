@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace TeacherOS\Modules\SchoolYears;
 
+use TeacherOS\Shared\Exceptions\CodedException;
+
 /**
  * Der Einwand eines Moduls gegen das Aendern oder Loeschen eines Schuljahres: maschinenlesbarer Code und Meldung fuer
- * Menschen. Der Aufrufer macht daraus `409` mit diesem Code ({@see SchoolYears}).
+ * Menschen. Er wird zu `409` mit diesem Code ({@see self::exception()}).
  */
 final class SchoolYearObjection
 {
@@ -14,5 +16,11 @@ final class SchoolYearObjection
         public readonly string $code,
         public readonly string $message,
     ) {
+    }
+
+    /** Die Ablehnung, die der Aufrufer wirft: 409 mit Code und Meldung des Einwands. */
+    public function exception(): CodedException
+    {
+        return new CodedException($this->code, 409, $this->message);
     }
 }

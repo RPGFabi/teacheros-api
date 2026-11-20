@@ -14,7 +14,7 @@ use TeacherOS\Shared\Uuid;
 /**
  * Schuljahre ansehen, anlegen, bearbeiten und loeschen (Tickets #54, #56, GLOSSARY.md: Schuljahr). Die Bezeichnung kommt aus dem Zeitraum
  * ({@see SchoolYearPeriod::name()}), der Status aus dem heutigen Datum der Schule ({@see SchoolYearStatus}); beides
- * wird nie gespeichert.
+ * wird nie gespeichert. Einwaende anderer Module gegen Aendern und Loeschen kommen ueber {@see SchoolYearGuards}.
  */
 final class SchoolYears
 {
@@ -27,6 +27,7 @@ final class SchoolYears
         private readonly SchoolYearRepository $repository = new SchoolYearRepository(),
         private readonly AuditLog $audit = new AuditLog(),
         private readonly ?\DateTimeImmutable $today = null,
+        private readonly SchoolYearGuards $guards = new SchoolYearGuards(),
     ) {
     }
 
@@ -104,12 +105,7 @@ final class SchoolYears
     {
         $this->exclusively(function () use ($actor, $id, $period): void {
             $year = $this->get($id);
-            foreach (SchoolYearGuards::all() as $guard) {
-                $objection = $guard->objectionToUpdate($year, $period);
-                if ($objection !== null) {
-                    throw new CodedException($objection->code, 409, $objection->message);
-                }
-            }
+            $this->guards->assertUpdatable($year, $period);
             $this->assertNoOverlap($period, $id);
             $this->repository->update($id, $period);
             $this->audit->record($actor, AuditLog::SCHOOL_YEAR_UPDATED, 'school_year', $id, ['old_name' => $year['name'], 'name' => $period->name()]);
@@ -128,12 +124,7 @@ final class SchoolYears
     {
         $this->exclusively(function () use ($actor, $id): void {
             $year = $this->get($id);
-            foreach (SchoolYearGuards::all() as $guard) {
-                $objection = $guard->objectionToDeletion($year);
-                if ($objection !== null) {
-                    throw new CodedException($objection->code, 409, $objection->message);
-                }
-            }
+            $this->guards->assertDeletable($year);
             try {
                 $this->repository->delete($id);
             } catch (\PDOException $e) {

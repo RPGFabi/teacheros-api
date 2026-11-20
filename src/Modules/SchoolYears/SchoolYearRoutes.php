@@ -18,13 +18,13 @@ use TeacherOS\Shared\Security\RequirePermission;
  */
 final class SchoolYearRoutes
 {
-    public static function register(ApiRouter $router, string $moduleId = ModuleCatalog::CORE, string $path = '/api/school-years'): void
+    public static function register(ApiRouter $router, SchoolYearsController $controller, string $moduleId = ModuleCatalog::CORE, string $path = '/api/school-years'): void
     {
-        $router->get($path, [SchoolYearsController::class, 'index'], ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::SCHOOL_YEARS_VIEW)]));
+        $router->get($path, [$controller, 'index'], ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::SCHOOL_YEARS_VIEW)]));
         $manage = ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::SCHOOL_YEARS_MANAGE)]);
-        $router->post($path, [SchoolYearsController::class, 'create'], $manage);
+        $router->post($path, [$controller, 'create'], $manage);
         // Ticket #56: Aendern und Loeschen als POST (der CORS-Standard laesst kein PUT/DELETE zu), wie bei den Rollen.
-        $router->post($path . '/:id/update', [SchoolYearsController::class, 'update'], $manage);
-        $router->post($path . '/:id/delete', [SchoolYearsController::class, 'delete'], $manage);
+        $router->post($path . '/:id/update', [$controller, 'update'], $manage);
+        $router->post($path . '/:id/delete', [$controller, 'delete'], $manage);
     }
 }

@@ -13,11 +13,10 @@ use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
-use TeacherOS\Modules\Classes\ClassesSchoolYearGuard;
-use TeacherOS\Modules\Classes\ClassRoutes;
+use TeacherOS\Modules\Classes\ClassesModule;
 use TeacherOS\Modules\Roles\RolesController;
-use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
-use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
+use TeacherOS\Modules\SchoolYears\SchoolYearsModule;
+use TeacherOS\Shared\Extension\ExtensionPoints;
 use TeacherOS\Shared\Modules\ModuleEntitlements;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 use TeacherOS\Shared\Security\PermissionCatalog;
@@ -91,28 +90,28 @@ final class AppBootstrap
 
         // Alle bisherigen Routen gehoeren zu `core` (immer aktiv). Routen eines Fachmoduls bauen ihre Middleware mit
         // ModuleGate::route(): Anmeldung, dann Modulfreigabe, dann Rechte (ADR 0002 B5, Ticket #13).
-        // Schuljahre (Ticket #54): erste Routen der Stammdaten, ebenfalls `core`.
-        SchoolYearRoutes::register($router);
-        // Klassen (Ticket #55): ebenfalls `core`.
-        ClassRoutes::register($router);
-        // Einwaende gegen Aendern und Loeschen eines Schuljahres (Ticket #56): jedes Modul mit Bezug auf Schuljahre meldet seine Pruefung hier an.
-        SchoolYearGuards::register(new ClassesSchoolYearGuard());
+        // Stammdaten (Spec #17, ebenfalls `core`): jedes Modul meldet seine Routen und seine Pruefungen an den Erweiterungspunkten
+        // anderer Module selbst an (ModuleRegistration); hier steht nur die Liste. Neue Module kommen in diese Liste.
+        $points = new ExtensionPoints();
+        foreach ([new SchoolYearsModule(), new ClassesModule()] as $module) {
+            $module->register($router, $points);
+        }
 
-        self::registerTestRoutes($router);
+        self::registerTestRoutes($router, $points);
     }
 
     /**
      * Nur in der Testumgebung: zusaetzliche Routen aus der Datei in TEST_ROUTES (z. B. eine Probe-Route eines
      * Fachmoduls, solange es noch keine echten Fachrouten gibt). Ausserhalb von APP_ENV=test wirkungslos.
      */
-    private static function registerTestRoutes(ApiRouter $router): void
+    private static function registerTestRoutes(ApiRouter $router, ExtensionPoints $points): void
     {
         if (Config::getString('APP_ENV') !== 'test') {
             return;
         }
         $file = Config::getString('TEST_ROUTES');
         if ($file !== '' && is_file($file)) {
-            (require $file)($router);
+            (require $file)($router, $points);
         }
     }
 

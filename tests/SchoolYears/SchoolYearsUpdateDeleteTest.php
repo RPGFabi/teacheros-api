@@ -285,13 +285,15 @@ final class SchoolYearsUpdateDeleteTest extends TestCase
 
     // --- Erweiterbare Pruefung ---
 
-    // Die Test-Pruefung (tests/Support/module-probe-routes.php) meldet sich wie ein spaeteres Modul an und erhebt
-    // Einwand gegen jedes Schuljahr, das im Jahr 2095 beginnt.
+    // Die Test-Pruefung (tests/Support/module-probe-routes.php) meldet sich wie ein spaeteres Modul an den Erweiterungspunkten
+    // der Anwendung an und erhebt Einwand gegen die Schuljahre, die der Test mit blockSchoolYear() eintraegt.
 
     public function testEinePruefungEinesAnderenModulsKannAendernUndLoeschenAblehnen(): void
     {
         $blocked = $this->createYear('2095-09-14', '2096-07-29');
         $free = $this->createYear('2090-09-14', '2091-07-29');
+        $this->app->blockSchoolYear($blocked, 'update');
+        $this->app->blockSchoolYear($blocked, 'delete');
 
         $update = $this->update($blocked, ['starts_on' => '2095-09-15', 'ends_on' => '2096-07-29']);
         $delete = $this->delete($blocked);
@@ -310,9 +312,19 @@ final class SchoolYearsUpdateDeleteTest extends TestCase
         $this->assertSame(200, $this->delete($free)['status']);
     }
 
+    public function testEineAndereGesperrteAktionBleibtErlaubt(): void
+    {
+        $id = $this->createYear('2090-09-14', '2091-07-29');
+        $this->app->blockSchoolYear($id, 'delete');
+
+        $this->assertSame(200, $this->update($id, ['starts_on' => '2090-09-15', 'ends_on' => '2091-07-29'])['status'], 'nur das Loeschen ist gesperrt');
+        $this->assertSame('test_delete_blocked', $this->delete($id)['json']['code']);
+    }
+
     public function testDieKlassenPruefungLaeuftNebenDerTestPruefungUndGewinntInDerReihenfolgeDerAnmeldung(): void
     {
         $id = $this->createYear('2095-09-14', '2096-07-29');
+        $this->app->blockSchoolYear($id, 'delete');
         $this->createClass($id);
 
         $delete = $this->delete($id);

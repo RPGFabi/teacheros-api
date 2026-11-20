@@ -11,43 +11,47 @@ use TeacherOS\Shared\Security\AuthenticationMiddleware;
 
 /**
  * Endpunkte der Klassen (Tickets #55 und #57). Modulpruefung und Rechte (`classes.view`, `classes.manage`) stehen an der
- * Route ({@see ClassRoutes}); Fehler mit Code uebersetzt der ApiRouter.
+ * Route ({@see ClassRoutes}); Fehler mit Code uebersetzt der ApiRouter. Den Dienst bringt das Modul mit ({@see ClassesModule}).
  */
 final class ClassesController
 {
-    public static function index(Request $request, Response $response): void
+    public function __construct(private readonly Classes $classes)
+    {
+    }
+
+    public function index(Request $request, Response $response): void
     {
         $schoolYearId = $request->getQuery('school_year_id');
         if (!is_string($schoolYearId) || $schoolYearId === '') {
             throw new CodedException('invalid_request', 400, 'Bitte das Schuljahr angeben (school_year_id).');
         }
-        $response->json(['classes' => (new Classes())->listIn($schoolYearId, self::flag($request->getQuery('include_archived')))]);
+        $response->json(['classes' => $this->classes->listIn($schoolYearId, self::flag($request->getQuery('include_archived')))]);
     }
 
     /** Nur waehlbare Klassen (ohne archivierte), eines Schuljahres (school_year_id) oder aller Schuljahre. */
-    public static function selectable(Request $request, Response $response): void
+    public function selectable(Request $request, Response $response): void
     {
         $schoolYearId = $request->getQuery('school_year_id');
         if ($schoolYearId !== null && (!is_string($schoolYearId) || $schoolYearId === '')) {
             throw new CodedException('invalid_request', 400, 'Bitte eine gültige Schuljahr-Kennung angeben (school_year_id).');
         }
-        $response->json(['classes' => (new Classes())->selectable($schoolYearId)]);
+        $response->json(['classes' => $this->classes->selectable($schoolYearId)]);
     }
 
-    public static function schoolYears(Request $request, Response $response): void
+    public function schoolYears(Request $request, Response $response): void
     {
-        $response->json(['school_years' => (new Classes())->schoolYears()]);
+        $response->json(['school_years' => $this->classes->schoolYears()]);
     }
 
-    public static function create(Request $request, Response $response): void
+    public function create(Request $request, Response $response): void
     {
         $input = ClassInput::fromInput($request->getBody('school_year_id'), $request->getBody('grade_level'), $request->getBody('name'));
-        $response->json(['class' => (new Classes())->create(AuthenticationMiddleware::actor(), $input)], 201);
+        $response->json(['class' => $this->classes->create(AuthenticationMiddleware::actor(), $input)], 201);
     }
 
-    public static function update(Request $request, Response $response): void
+    public function update(Request $request, Response $response): void
     {
-        $class = (new Classes())->update(
+        $class = $this->classes->update(
             AuthenticationMiddleware::actor(),
             (string) $request->getParam('id'),
             $request->getBody('grade_level'),
@@ -57,20 +61,20 @@ final class ClassesController
         $response->json(['class' => $class]);
     }
 
-    public static function archive(Request $request, Response $response): void
+    public function archive(Request $request, Response $response): void
     {
-        $response->json(['class' => (new Classes())->archive(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))]);
+        $response->json(['class' => $this->classes->archive(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))]);
     }
 
-    public static function restore(Request $request, Response $response): void
+    public function restore(Request $request, Response $response): void
     {
-        $response->json(['class' => (new Classes())->restore(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))]);
+        $response->json(['class' => $this->classes->restore(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))]);
     }
 
-    public static function delete(Request $request, Response $response): void
+    public function delete(Request $request, Response $response): void
     {
         $id = (string) $request->getParam('id');
-        (new Classes())->delete(AuthenticationMiddleware::actor(), $id);
+        $this->classes->delete(AuthenticationMiddleware::actor(), $id);
         $response->json(['deleted' => true, 'id' => $id]);
     }
 

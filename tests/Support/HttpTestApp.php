@@ -117,6 +117,8 @@ final class HttpTestApp
         }
         // Tabelle der Test-Verknuepfung von Klassen (tests/Support/module-probe-routes.php); kein Teil des Schemas.
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_class_links` (`class_id` char(36) NOT NULL PRIMARY KEY)');
+        // Ebenso fuer die Test-Pruefung der Schuljahre: welche Aktion (update/delete) an welchem Schuljahr gesperrt ist.
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_school_year_blocks` (`school_year_id` char(36) NOT NULL, `action` varchar(10) NOT NULL, PRIMARY KEY (`school_year_id`, `action`))');
     }
 
     private function dropDatabase(): void
@@ -186,11 +188,18 @@ final class HttpTestApp
         return $this->pdo()->query('SELECT * FROM `classes` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
     }
 
-    /** Entfernt alle Schuljahre samt ihrer Klassen (Testaufbau). */
+    /** Entfernt alle Schuljahre samt ihrer Klassen und Sperren (Testaufbau). */
     public function resetSchoolYears(): void
     {
         $this->resetClasses();
+        $this->pdo()->exec('DELETE FROM `test_school_year_blocks`');
         $this->pdo()->exec('DELETE FROM `school_years`');
+    }
+
+    /** Laesst die Test-Pruefung der Schuljahre die Aktion `update` oder `delete` an diesem Schuljahr ablehnen (Einwand eines anderen Moduls). */
+    public function blockSchoolYear(string $schoolYearId, string $action): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_school_year_blocks` (`school_year_id`, `action`) VALUES (?, ?)')->execute([$schoolYearId, $action]);
     }
 
     /** @return list<array<string,mixed>> nach Beginn */
