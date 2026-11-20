@@ -99,7 +99,11 @@ final class HttpTestApp
      */
     private function readResponse(array $process): array
     {
-        [, $out] = $this->finish($process);
+        // Nur stdout ist die HTTP-Antwort; Warnungen von php-cgi auf stderr (z. B. JIT neben Xdebug) duerfen sie nicht verfaelschen.
+        [$p, $pipes] = $process;
+        $out = stream_get_contents($pipes[1]);
+        stream_get_contents($pipes[2]);
+        proc_close($p);
         [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
         $status = 200;
         if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
