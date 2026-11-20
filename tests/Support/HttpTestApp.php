@@ -45,35 +45,68 @@ final class HttpTestApp
      */
     public function requestConcurrently(array $calls): array
     {
-        $cgi = getenv('TEST_PHP_CGI') ?: dirname(PHP_BINARY) . DIRECTORY_SEPARATOR . (PHP_OS_FAMILY === 'Windows' ? 'php-cgi.exe' : 'php-cgi');
-        $running = [];
-        foreach ($calls as $i => [$method, $uri, $env, $json]) {
-            $body = ($json ?? null) === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
-            $env = array_merge($this->env(), [
-                'REQUEST_METHOD' => $method,
-                'REQUEST_URI' => $uri,
-                'SCRIPT_FILENAME' => $this->root . '/public/index.php',
-                'REDIRECT_STATUS' => '200',
-                'GATEWAY_INTERFACE' => 'CGI/1.1',
-                'SERVER_PROTOCOL' => 'HTTP/1.1',
-            ], $body === '' ? [] : [
-                'CONTENT_TYPE' => 'application/json',
-                'CONTENT_LENGTH' => (string) strlen($body),
-            ], $env ?? []);
-            $running[$i] = $this->start([$cgi, '-q'], $env, $body);
-        }
-        $responses = [];
-        foreach ($running as $i => $process) {
-            [, $out] = $this->finish($process);
-            [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
-            $status = 200;
-            if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
-                $status = (int) $m[1];
+        $running = array_map(fn (array $call): array => $this->startRequest(...$call), $calls);
+        return array_map($this->readResponse(...), $running);
+    }
+
+    /**
+     * Startet einen Request, wartet, bis er mit einer SQL-Anweisung an einer Sperre haengt (Text der Anweisung beginnt
+     * mit $statementPrefix), ruft dann $release auf (z. B. Commit der Transaktion des Tests, die die Sperre haelt) und
+     * liefert die Antwort. Damit laesst sich ein Rennen zwischen Pruefung und Schreiben ohne Zufall nachstellen.
+     *
+     * @param array<string,string> $env
+     * @return array{status:int, body:string, json:?array}
+     */
+    public function requestReleasedWhenBlocked(string $statementPrefix, callable $release, string $method, string $uri, array $env = [], ?array $json = null): array
+    {
+        $process = $this->startRequest($method, $uri, $env, $json);
+        $stmt = $this->pdo()->prepare('SELECT 1 FROM `information_schema`.`PROCESSLIST` WHERE `DB` = ? AND `INFO` LIKE ? AND `COMMAND` = \'Query\'');
+        $deadline = microtime(true) + 15;
+        while (microtime(true) < $deadline) {
+            $stmt->execute([$this->dbName, $statementPrefix . '%']);
+            if ($stmt->fetchColumn() !== false) {
+                break;
             }
-            $json = json_decode($body, true);
-            $responses[$i] = ['status' => $status, 'body' => $body, 'json' => is_array($json) ? $json : null];
+            usleep(50_000);
         }
-        return $responses;
+        $release();
+        return $this->readResponse($process);
+    }
+
+    /** @return array{resource, array<int,resource>} */
+    private function startRequest(string $method, string $uri, array $env = [], ?array $json = null): array
+    {
+        $cgi = getenv('TEST_PHP_CGI') ?: dirname(PHP_BINARY) . DIRECTORY_SEPARATOR . (PHP_OS_FAMILY === 'Windows' ? 'php-cgi.exe' : 'php-cgi');
+        $body = $json === null ? '' : json_encode($json, JSON_THROW_ON_ERROR);
+        $env = array_merge($this->env(), [
+            'REQUEST_METHOD' => $method,
+            'REQUEST_URI' => $uri,
+            'QUERY_STRING' => (string) parse_url($uri, PHP_URL_QUERY),
+            'SCRIPT_FILENAME' => $this->root . '/public/index.php',
+            'REDIRECT_STATUS' => '200',
+            'GATEWAY_INTERFACE' => 'CGI/1.1',
+            'SERVER_PROTOCOL' => 'HTTP/1.1',
+        ], $body === '' ? [] : [
+            'CONTENT_TYPE' => 'application/json',
+            'CONTENT_LENGTH' => (string) strlen($body),
+        ], $env);
+        return $this->start([$cgi, '-q'], $env, $body);
+    }
+
+    /**
+     * @param array{resource, array<int,resource>} $process
+     * @return array{status:int, body:string, json:?array}
+     */
+    private function readResponse(array $process): array
+    {
+        [, $out] = $this->finish($process);
+        [$head, $body] = array_pad(preg_split("/\r?\n\r?\n/", $out, 2), 2, '');
+        $status = 200;
+        if (preg_match('/^Status:\s*(\d{3})/mi', $head, $m)) {
+            $status = (int) $m[1];
+        }
+        $json = json_decode($body, true);
+        return ['status' => $status, 'body' => $body, 'json' => is_array($json) ? $json : null];
     }
 
     public function migrate(): void
@@ -82,6 +115,10 @@ final class HttpTestApp
         if ($code !== 0) {
             throw new \RuntimeException("Migration der Testdatenbank fehlgeschlagen:\n$out");
         }
+        // Tabelle der Test-Verknuepfung von Klassen (tests/Support/module-probe-routes.php); kein Teil des Schemas.
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_class_links` (`class_id` char(36) NOT NULL PRIMARY KEY)');
+        // Ebenso fuer die Test-Pruefung der Schuljahre: welche Aktion (update/delete) an welchem Schuljahr gesperrt ist.
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_school_year_blocks` (`school_year_id` char(36) NOT NULL, `action` varchar(10) NOT NULL, PRIMARY KEY (`school_year_id`, `action`))');
     }
 
     private function dropDatabase(): void
@@ -130,6 +167,45 @@ final class HttpTestApp
         $this->pdo()->exec('DELETE FROM `permission_user_overrides`');
         $this->pdo()->exec('DELETE FROM `accounts`');
         $this->pdo()->exec('DELETE FROM `audit_log`');
+    }
+
+    /** Entfernt alle Klassen (Testaufbau). */
+    public function resetClasses(): void
+    {
+        $this->pdo()->exec('DELETE FROM `test_class_links`');
+        $this->pdo()->exec('DELETE FROM `classes`');
+    }
+
+    /** Verknuepft eine Klasse mit der Test-Verknuepfung (stellvertretend fuer ein spaeteres Modul wie #18/#19). */
+    public function linkClass(string $classId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_class_links` (`class_id`) VALUES (?)')->execute([$classId]);
+    }
+
+    /** @return list<array<string,mixed>> nach Anlegezeitpunkt */
+    public function classes(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `classes` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** Entfernt alle Schuljahre samt ihrer Klassen und Sperren (Testaufbau). */
+    public function resetSchoolYears(): void
+    {
+        $this->resetClasses();
+        $this->pdo()->exec('DELETE FROM `test_school_year_blocks`');
+        $this->pdo()->exec('DELETE FROM `school_years`');
+    }
+
+    /** Laesst die Test-Pruefung der Schuljahre die Aktion `update` oder `delete` an diesem Schuljahr ablehnen (Einwand eines anderen Moduls). */
+    public function blockSchoolYear(string $schoolYearId, string $action): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_school_year_blocks` (`school_year_id`, `action`) VALUES (?, ?)')->execute([$schoolYearId, $action]);
+    }
+
+    /** @return list<array<string,mixed>> nach Beginn */
+    public function schoolYears(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `school_years` ORDER BY `starts_on`')->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /** Entfernt alle Modulfreigaben (Testaufbau): danach ist nur `core` aktiv. */

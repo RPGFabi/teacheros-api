@@ -207,6 +207,101 @@ Ein Verwalter mit `accounts.deactivate` deaktiviert ein **aktives** Konto (Gloss
 - Die Lesesicht (GET und die Antworten der Schreibwege) enthält `roles`, `permissions`, `role_actions` und `permission_actions` nur, wenn der Akteur mindestens eines der drei Verwaltungsrechte hat (oder der Betreiber ist); sonst nur `account` und `account_actions`. Die Web-Detailansicht blendet die Abschnitte Rollen, Effektive Rechte und Einzelrechte dann aus.
 - Tests: `tests/Accounts/AccountDeactivationTest.php` (Abschnitt „Rechte der Lesesicht und der Schreibwege“).
 
+## Schuljahre (Ticket #54)
+
+Erstes Stammdaten-Ticket (Spec #17; Glossar: Schuljahr). Führt die Rechtegruppe „Stammdaten“ ein: `school_years.view` („Schuljahre ansehen“) und `school_years.manage` („Schuljahre verwalten“). Die Standardrollen haben sie nicht voreingestellt, Schuladmin hat sie über die Wildcard. Die Routen gehören zu `core` und laufen über `ModuleGate::route()` (Anmeldung, Modulprüfung, dann Recht); `manage` schließt `view` nicht ein.
+
+| Endpunkt | Recht | Body | Antwort |
+|---|---|---|---|
+| `GET /api/school-years` | `school_years.view` | – | `200 {"school_years": [{id, name, starts_on, ends_on, status}]}`, nach Beginn aufsteigend |
+| `POST /api/school-years` | `school_years.manage` | `{starts_on, ends_on}` (`JJJJ-MM-TT`, beide Tage inklusive) | `201 {"school_year": {…}}` (Zeile wie in der Liste) |
+
+- **Bezeichnung** wird aus dem Zeitraum erzeugt (`SchoolYearPeriod::name()`): Jahr des Beginns, Schrägstrich, letzte zwei Ziffern des Endjahres (14.09.2026 bis 29.07.2027 ergibt „2026/27“). Ein mitgeschicktes `name` wird ignoriert.
+- **Status** (`running`, `upcoming`, `past`) wird bei jeder Abfrage aus dem heutigen Datum (Europa/Berlin) abgeleitet (`SchoolYearStatus::derive`), nie gespeichert. Laufend ist das Schuljahr, das heute enthält, sonst (heute in einer Lücke zwischen zwei Schuljahren) das nächste kommende. Liegt heute vor dem ersten Schuljahr, läuft keines und das erste ist kommend; nach dem letzten ist alles vergangen. Höchstens eines läuft.
+- **Fehler:** `400 invalid_request` (kein echter Kalendertag im Format `JJJJ-MM-TT`), `422 invalid_period` (Ende nicht im Kalenderjahr nach dem Beginn), `409 school_year_overlap` (Überschneidung, auch bei nur einem gemeinsamen Tag; Lücken sind erlaubt), `503 school_years_busy` (Sperre nicht binnen 10 s frei), `403 forbidden`, `401`.
+- **Speicherung:** Tabelle `school_years` (Migration 0013: `id` UUID als stabile Kennung, `starts_on`, `ends_on`). Prüfung auf Überschneidung, Insert und Audit laufen unter der benannten MySQL-Sperre `teacheros.school_years` in einer Transaktion (zwei gleichzeitige Anfragen setzen sich nicht beide durch).
+- **Audit:** `school_year.created` (Objekt `school_year`, Objekt-ID = Kennung, Kontext `name`).
+- Code: `src/Modules/SchoolYears/` (`SchoolYearRoutes`, `SchoolYearsController`, `SchoolYears`, `SchoolYearRepository`, `SchoolYearPeriod`, `SchoolYearStatus`). Tests: `tests/SchoolYears/`; die echten Routen hängt `tests/Support/module-probe-routes.php` zusätzlich unter das nicht freigegebene Modul `observe`, um „Modulprüfung vor Rechteprüfung“ zu beweisen.
+- Web: Seite „Schuljahre“ (`src/school-years/`, Menüpunkt `#/schuljahre` nur mit `school_years.view`, Formular nur mit `school_years.manage`), Liste mit Status-Badge, Vorschau der Bezeichnung, auf dem Smartphone als Karten.
+
+## Klassen (Ticket #55)
+
+Zweites Stammdaten-Ticket (Spec #17; Glossar: Klasse, Klassenstufe). Neue Rechte in der Gruppe „Stammdaten“: `classes.view` („Klassen ansehen“) und `classes.manage` („Klassen verwalten“). Standardrollen haben sie nicht voreingestellt, Schuladmin über die Wildcard. `classes.view` setzt `school_years.view` nicht voraus, `manage` schließt `view` nicht ein. Die Routen gehören zu `core` und laufen über `ModuleGate::route()`. Das Ticket nennt keine Pfade; gewählt wurden `/api/classes` mit Schuljahr als Query beziehungsweise Body-Feld.
+
+| Endpunkt | Recht | Body / Query | Antwort |
+|---|---|---|---|
+| `GET /api/classes?school_year_id=<Kennung>` | `classes.view` | Query `school_year_id` (Pflicht) | `200 {"classes": [{id, grade_level, name, school_year: {id, name}}]}`, sortiert nach Klassenstufe, dann natürlich nach Bezeichnung (7a, 7b, …, 10a) |
+| `GET /api/classes/school-years` | `classes.view` | – | `200 {"school_years": [{id, name, starts_on, ends_on, status}]}`, nach Beginn aufsteigend; dieselbe Zeile und derselbe Status wie `GET /api/school-years`, aber ohne `school_years.view`, damit die Seite „Klassen“ mit nur `classes.view` ein Schuljahr wählen kann |
+| `POST /api/classes` | `classes.manage` | `{school_year_id, grade_level, name}` | `201 {"class": {…}}` (Zeile wie in der Liste) |
+
+- **Klassenstufe** `grade_level`: ganze Zahl (JSON-Zahl, kein Text) von 1 bis 13. **Bezeichnung** `name`: nach dem Trimmen 1 bis 20 Zeichen; gespeichert wird die getrimmte Fassung. Getrimmt wird Unicode-bewusst (Leerzeichen jeder Art wie das geschützte Leerzeichen, Zeilenumbrüche, unsichtbare Zeichen wie Zero-Width-Space und BOM am Rand); eine Bezeichnung nur aus Leerraum oder mit ungültigem UTF-8 ist `400 invalid_request`. Mit ext-intl wird vor Speichern und Vergleich nach NFC normalisiert („7ä“ als ein Zeichen und als „a“ plus Trema ist dieselbe Bezeichnung); ohne ext-intl (in `composer.json` nicht zwingend verlangt) unterbleibt die Normalisierung, Trimmen und Groß-/Kleinschreibung gelten trotzdem. Die Bezeichnung wird nicht gegen die Klassenstufe geprüft („7c“ in Stufe 9 ist erlaubt).
+- **Eindeutigkeit:** Die Bezeichnung ist innerhalb des Schuljahres eindeutig, Groß-/Kleinschreibung egal („7a“ = „7A“); „7ä“ ist eine andere Bezeichnung. In einem anderen Schuljahr darf dieselbe Bezeichnung erneut vorkommen (neue Klasse). Anlegen geht in jedem Schuljahr (laufend, kommend, vergangen).
+- **Schuljahr:** Jede Klassenantwort trägt Kennung und Bezeichnung des Schuljahres mit. Die Zugehörigkeit ist unveränderlich (Fremdschlüssel auf `school_years`; ein Schuljahr mit Klassen lässt sich nicht löschen).
+- **Fehler:** `400 invalid_request` (fehlende oder ungültige Schuljahr-Kennung, Klassenstufe oder Bezeichnung; fehlendes `school_year_id` in der Liste), `404 school_year_not_found` (auch wenn das Schuljahr zwischen Prüfung und Anlegen gelöscht wird: der Fremdschlüssel-Fehler 1452 wird zu diesem Code, nicht zu 500), `409 class_name_taken`, `403 forbidden`, `401`; hinter nicht freigegebenem Modul `403 module_disabled` vor der Rechteprüfung.
+- **Vorauswahl im Web** („laufendes Schuljahr, sonst zuletzt vergangenes, sonst das nächste kommende“) leitet sich aus dem `status` der Schuljahre ab (`running`, sonst das letzte `past`, sonst das erste `upcoming`), es gibt keine zweite Regel.
+- **Speicherung:** Tabelle `classes` (Migration 0014: `id` UUID, `school_year_id`, `grade_level`, `name`, `name_key` = kleingeschriebene Bezeichnung, binär verglichen; eindeutiger Schlüssel `(school_year_id, name_key)` sichert die Eindeutigkeit auch bei gleichzeitigen Anfragen). Anlegen und Audit laufen in einer Transaktion.
+- **Audit:** `class.created` (Objekt `class`, Objekt-ID = Kennung, Kontext nur `name`; Klassenstufe und Schuljahr stehen nicht im Kontext, Audit trägt nur Kennung und Bezeichnung).
+- Code: `src/Modules/Classes/` (`ClassRoutes`, `ClassesController`, `Classes`, `ClassRepository`, `ClassInput`); Schuljahre und Status kommen aus `SchoolYears` (neu: `find`), Kennungen aus `Shared\Uuid`. Tests: `tests/Classes/`; die Routen hängt `tests/Support/module-probe-routes.php` zusätzlich unter `observe` (`/api/test/observe-classes`). Der Test-Harness (`HttpTestApp`) setzt jetzt `QUERY_STRING` aus der URI.
+- Bearbeiten, Archivieren, Wiederherstellen und Löschen von Klassen: Abschnitt „Klassen verwalten (Ticket #57)“.
+- Web: Seite „Klassen“ (`src/classes/`, Menüpunkt nur mit `classes.view`, Formular nur mit `classes.manage`, Schuljahr-Auswahl) und der Abschnitt „Klassen“ in der Detailansicht eines Schuljahres.
+
+## Schuljahr bearbeiten und löschen (Ticket #56)
+
+Dritter Teil der Stammdaten (Spec #17). Kein neues Recht und keine Migration: beide Wege verlangen `school_years.manage` (sonst `403 forbidden`, Modulprüfung zuerst, Routen über `ModuleGate::route()`). Schuljahre werden nie archiviert. Nur GET/POST (CORS), darum `POST …/update` und `POST …/delete` wie bei den Rollen.
+
+| Endpunkt | Recht | Body | Antwort |
+|---|---|---|---|
+| `POST /api/school-years/{id}/update` | `school_years.manage` | `{starts_on, ends_on}` (wie beim Anlegen) | `200 {"school_year": {id, name, starts_on, ends_on, status}}`; die Bezeichnung folgt dem neuen Zeitraum, die Kennung bleibt |
+| `POST /api/school-years/{id}/delete` | `school_years.manage` | – | `200 {"deleted": true, "id": "<Kennung>"}` |
+
+- **Ändern:** dieselben Regeln wie beim Anlegen (Tage im Format `JJJJ-MM-TT`, Ende im Kalenderjahr nach dem Beginn, keine Überschneidung mit *anderen* Schuljahren; der eigene alte Zeitraum zählt nicht). Ein unveränderter Zeitraum ist erlaubt. Ein Schuljahr mit Klassen darf bearbeitet werden.
+- **Löschen:** abgelehnt, sobald das Schuljahr Klassen hat, **alle** Klassen des Schuljahres zählen, auch archivierte (Fremdschlüssel `classes.school_year_id` sichert es zusätzlich ab).
+- **Fehler:** `400 invalid_request`, `422 invalid_period`, `404 school_year_not_found`, `409 school_year_overlap`, `409 school_year_has_classes` (Löschen mit Klassen), `409 school_year_in_use` (Auffangnetz: der Fremdschlüssel schlug zwischen Prüfung und Löschen zu, z. B. durch eine gleichzeitig angelegte Klasse), `409 <Code eines Moduls>` (Einwand einer angemeldeten Prüfung), `503 school_years_busy`, `403 forbidden`, `401`; hinter nicht freigegebenem Modul `403 module_disabled`.
+- **Erweiterbare Prüfung** (Source of Truth: Erweiterbarkeit): Module mit Bezug auf Schuljahre (#18, #19, …) hängen ihren Einwand gegen Ändern und Löschen an, ohne `SchoolYears` zu ändern. Interface `SchoolYearGuard` (`objectionToUpdate(year, newPeriod)`, `objectionToDeletion(year)`, je `?SchoolYearObjection{code, message}`) und die Registry `SchoolYearGuards` (siehe „Erweiterungspunkte“ unten); der erste Einwand gewinnt und wird zu `409` mit seinem Code und seiner Meldung (`SchoolYearGuards::assertUpdatable/assertDeletable`, die Ablehnung baut `SchoolYearObjection::exception()`). Die Prüfungen laufen unter der Schuljahr-Sperre in der Transaktion der Änderung. Die Klassen-Sperre ist selbst so angemeldet (`Modules/Classes/ClassesSchoolYearGuard`, Code `school_year_has_classes`); ihr Einwand gegen das Ändern ist leer. Die Test-Prüfung steht in `tests/Support/module-probe-routes.php` und lehnt Aktionen an genau den Schuljahren ab, die der Test in der Tabelle `test_school_year_blocks` einträgt (`HttpTestApp::blockSchoolYear($id, 'update'|'delete')`); ohne Eintrag hat sie nichts einzuwenden. Die Registry selbst ist ohne Datenbank in `tests/SchoolYears/SchoolYearGuardsTest.php` getestet.
+- **Audit:** `school_year.updated` (Kontext `old_name`, `name`) und `school_year.deleted` (Kontext `name`), Objekt `school_year`, Objekt-ID = Kennung. Auch ein unveränderter Zeitraum schreibt einen Eintrag.
+- Tests: `tests/SchoolYears/SchoolYearsUpdateDeleteTest.php`.
+- Web: Schaltflächen „Bearbeiten“ und „Löschen“ (mit Bestätigung) je Zeile der Seite „Schuljahre“, nur mit `school_years.manage`; Ablehnungen werden mit verständlichem Text angezeigt.
+
+## Klassen verwalten (Ticket #57)
+
+Viertes Stammdaten-Ticket (Spec #17; Glossar: Klasse, Archivierung). Alle Aktionen brauchen `classes.manage`, laufen über `ModuleGate::route()` (Modulprüfung vor dem Recht) und sind wegen CORS (nur GET/POST) als `POST /api/classes/:id/<aktion>` gebaut. Jede Klassenantwort trägt jetzt zusätzlich `archived` (bool): `{id, grade_level, name, archived, school_year: {id, name}}`.
+
+| Endpunkt | Recht | Body / Query | Antwort |
+|---|---|---|---|
+| `POST /api/classes/:id/update` | `classes.manage` | `{grade_level, name}` (optional `school_year_id`, nur zur Kontrolle) | `200 {"class": {…}}` |
+| `POST /api/classes/:id/archive` | `classes.manage` | – | `200 {"class": {…, "archived": true}}` |
+| `POST /api/classes/:id/restore` | `classes.manage` | – | `200 {"class": {…, "archived": false}}` |
+| `POST /api/classes/:id/delete` | `classes.manage` | – | `200 {"deleted": true, "id": "<Kennung>"}` |
+| `GET /api/classes?school_year_id=…&include_archived=1` | `classes.view` | Filter `include_archived` (`1` oder `true`) | wie bisher; **ohne den Filter keine archivierten Klassen** |
+| `GET /api/classes/selectable[?school_year_id=…]` | `classes.view` | optional Schuljahr | `200 {"classes": [...]}`: nur wählbare (nicht archivierte) Klassen, eines Schuljahres oder aller (dann nach Beginn des Schuljahres, darin nach Klassenstufe und natürlicher Bezeichnung) |
+
+- **Bearbeiten:** Prüfreihenfolge: unbekannte Klasse (404 `class_not_found`), archivierte Klasse (409 `class_archived`), erst dann die Eingabe (400 `invalid_request`, auch abweichendes `school_year_id`); eine archivierte Klasse meldet also immer `class_archived`, auch bei ungültiger Eingabe. Klassenstufe und Bezeichnung nach denselben Regeln wie beim Anlegen (400 `invalid_request`, 409 `class_name_taken`; die eigene Bezeichnung in anderer Schreibung oder nur die Stufe zu ändern ist erlaubt). Das Schuljahr ist nicht änderbar: ein abweichendes `school_year_id` im Body ergibt 400 `invalid_request`. `name_key` wird mitgepflegt, die alte Bezeichnung ist danach wieder frei.
+- **Archivieren:** geht mit und ohne Verknüpfungen. Eine archivierte Klasse bleibt lesbar (nur mit Filter in der Liste), ihre Bezeichnung bleibt im Schuljahr belegt (Anlegen und Umbenennen auf diese Bezeichnung: 409 `class_name_taken`), sie ist schreibgeschützt (Bearbeiten: 409 `class_archived`) und nicht wählbar. Erneut archivieren: 409 `class_already_archived`.
+- **Wiederherstellen:** macht die Klasse wieder änderbar und wählbar, ohne erneute Eindeutigkeitsprüfung (die Bezeichnung war belegt). Nicht archivierte Klasse: 409 `class_not_archived`.
+- **Löschen:** endgültig, nur wenn die Verknüpfungsprüfung nichts findet (auch bei archivierten Klassen); sonst 409 `class_linked` mit Hinweis auf Archivieren in der Meldung, die die Verknüpfung benennt. Danach ist die Bezeichnung wieder frei.
+- **Fehler gemeinsam:** 404 `class_not_found`, 403 `forbidden`, 401; hinter nicht freigegebenem Modul 403 `module_disabled` vor der Rechteprüfung.
+- **Erweiterbare Verknüpfungsprüfung:** Interface `ClassLinkGuard` (`label()`, `isLinked(classId)`) und die Registry `ClassLinkGuards` (gleiches Muster wie bei den Schuljahren, siehe „Erweiterungspunkte“). Spätere Module (#18, #19) melden ihre Prüfung in ihrer Modul-Registrierung an (`$points->get(ClassLinkGuards::class)->register(...)`); `Classes::delete` fragt über `ClassLinkGuards::assertDeletable` alle angemeldeten Prüfungen ab und bleibt unverändert (409 `class_linked`). Ohne Anmeldung gilt eine Klasse als unverknüpft. Die Tests melden eine Test-Verknüpfung über `tests/Support/module-probe-routes.php` an (Tabelle `test_class_links`, `HttpTestApp::linkClass`).
+- **Wählbare Klassen für spätere Zuordnungen:** `GET /api/classes/selectable` beziehungsweise `Classes::selectable(?schoolYearId)`; neue Zuordnungen dürfen nur solche Klassen verwenden. Bestehende Zuordnungen an eine später archivierte Klasse bleiben lesbar.
+- **Speicherung:** Migration 0016 ergänzt `classes.archived_at` (NULL = aktiv). Aktionen sperren die Zeile (`SELECT … FOR UPDATE`) und laufen samt Audit in einer Transaktion.
+- **Audit:** `class.updated` (Kontext `old_name`, `name`), `class.archived`, `class.restored`, `class.deleted` (Kontext je `name`; Objekt `class`, Objekt-ID = Kennung). Wie bei `school_year.*` nur Kennung und Bezeichnung, nicht Klassenstufe oder Schuljahr.
+- Code: `src/Modules/Classes/` (neu: `ClassChange` mit den Regeln für Stufe und Bezeichnung, von `ClassInput` mitgenutzt; `ClassLinkGuard`, `ClassLinkGuards`). Tests: `tests/Classes/ClassLifecycleTest.php`, `tests/Classes/ClassLinkGuardsTest.php`.
+- Web: Klassenliste mit Schalter „Archivierte anzeigen“, Bearbeiten, Archivieren, Wiederherstellen, Löschen mit Bestätigung; archivierte Klassen sind markiert.
+
+## Erweiterungspunkte und Modul-Anmeldung (Review #17)
+
+Ein Muster für alle Erweiterungshaken (Source of Truth 4.7.1: Erweiterbarkeit, Dependency Injection, einheitliche Registries). Aktuell zwei Haken, beide nach demselben Schema benannt (`<Objekt>Guard` = Interface, `<Objekt>Guards` = Registry):
+
+| Haken | Interface | Registry | Gefragt von |
+|---|---|---|---|
+| Schuljahr ändern/löschen | `SchoolYearGuard` | `SchoolYearGuards` | `SchoolYears::update/delete` |
+| Klasse löschen (Verknüpfung) | `ClassLinkGuard` | `ClassLinkGuards` | `Classes::delete` |
+
+- **Instanzbasiert, per Konstruktor injizierbar:** Eine Registry (Basis `Shared\Extension\GuardRegistry`, eigenes typisiertes `register()`) ist eine gewöhnliche Instanz ohne statischen Zustand. Der Dienst bekommt sie im Konstruktor (`new SchoolYears(guards: …)`, `new Classes(linkGuards: …)`, Standard: leere Registry). Gefragt wird in der Reihenfolge der Anmeldung.
+- **Eine Anmeldung je Modul:** Jedes Modul hat eine Klasse `<Modul>Module implements Bootstrap\ModuleRegistration` mit `register(ApiRouter, ExtensionPoints)`: dort meldet es seine Routen am Router und seine Prüfungen an den Registries anderer Module an (`$points->get(SchoolYearGuards::class)->register(new ClassesSchoolYearGuard())`). `ExtensionPoints` (`Shared\Extension`) hält je Registry-Klasse genau eine Instanz der Anwendung und legt sie bei Bedarf an; der Kern kennt keine Registry. `AppBootstrap::registerRoutes` führt nur die Liste der Module (`SchoolYearsModule`, `ClassesModule`); ein neues Modul trägt sich dort mit einer Zeile ein und registriert alles Weitere selbst. Ganz ohne Eintrag im Kern ginge es nur mit automatischer Erkennung; die ist bewusst nicht gebaut.
+- **Controller sind Instanzen mit Dienst im Konstruktor** (`SchoolYearsController(SchoolYears)`, `ClassesController(Classes)`), die Routen verweisen auf `[$controller, 'methode']`. Das Modul baut den Controller mit den Registries der Anwendung (`<Modul>Module::controller($points)`, auch von den Probe-Routen der Tests genutzt).
+- **Tests ohne Tarnung:** Registries werden ohne Datenbank direkt getestet (`SchoolYearGuardsTest`, `ClassLinkGuardsTest`: Reihenfolge, erster Einwand gewinnt, eigene Instanz je Test). Für den HTTP-Weg (php-cgi läuft im eigenen Prozess) meldet `tests/Support/module-probe-routes.php` (die Datei bekommt Router und `ExtensionPoints` der Anwendung) Test-Prüfungen an, deren Verhalten der Test über Tabellen steuert (`test_school_year_blocks`, `test_class_links`).
+- **Gemeinsame Helfer:** Transaktion und Namenssperre: `Shared\Database\Transactions::run/underLock` (von Schuljahren und Klassen genutzt; ältere Stellen wie `AccountInvitations`, `ModuleEntitlements`, `AccessAdministration` haben noch eigene Varianten und wurden nicht angefasst). MySQL-Fehlernummern: `Shared\Database\MysqlError` (1062, 1451, 1452).
+
 ## Weiterführend
 
 - [Architektur](architecture.md) · [Roadmap](roadmap.md) · [Entscheidungen](decisions/) · [Glossar](../GLOSSARY.md)

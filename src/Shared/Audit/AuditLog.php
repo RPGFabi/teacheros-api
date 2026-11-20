@@ -40,6 +40,30 @@ final class AuditLog
     /** Die Freigabe eines Moduls wurde zurueckgenommen (Ticket #13); Objekt: Modul-ID, Kontext: valid_from (UTC). */
     public const MODULE_DISABLED = 'module.disabled';
 
+    /** Ein Schuljahr wurde angelegt (Ticket #54); Objekt: Kennung des Schuljahres, Kontext: name (Bezeichnung). */
+    public const SCHOOL_YEAR_CREATED = 'school_year.created';
+
+    /** Ein Schuljahr wurde bearbeitet (Ticket #56); Objekt: Kennung, Kontext: old_name (alte Bezeichnung), name (neue Bezeichnung). */
+    public const SCHOOL_YEAR_UPDATED = 'school_year.updated';
+
+    /** Ein Schuljahr wurde geloescht (Ticket #56); Objekt: Kennung, Kontext: name (Bezeichnung). */
+    public const SCHOOL_YEAR_DELETED = 'school_year.deleted';
+
+    /** Eine Klasse wurde angelegt (Ticket #55); Objekt: Kennung der Klasse, Kontext: name (Bezeichnung). */
+    public const CLASS_CREATED = 'class.created';
+
+    /** Klassenstufe oder Bezeichnung einer Klasse geaendert (Ticket #57); Objekt: Kennung, Kontext: old_name (alte Bezeichnung), name (neue Bezeichnung); Klassenstufe und Schuljahr gehoeren nicht in den Kontext. */
+    public const CLASS_UPDATED = 'class.updated';
+
+    /** Eine Klasse wurde archiviert (Ticket #57); Objekt: Kennung, Kontext: name. */
+    public const CLASS_ARCHIVED = 'class.archived';
+
+    /** Eine archivierte Klasse wurde wiederhergestellt (Ticket #57); Objekt: Kennung, Kontext: name. */
+    public const CLASS_RESTORED = 'class.restored';
+
+    /** Eine unverknuepfte Klasse wurde endgueltig geloescht (Ticket #57); Objekt: Kennung, Kontext: name. */
+    public const CLASS_DELETED = 'class.deleted';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {
