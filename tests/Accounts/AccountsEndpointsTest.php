@@ -318,12 +318,12 @@ final class AccountsEndpointsTest extends TestCase
     public function testAblaufdatumDerEinladungWirdDurchgereichtUndNirgendsGespeichert(): void
     {
         $this->asAdmin();
-        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => true, 'already_active' => false, 'username' => 'schueler.eins', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS', 'expires_at' => '2026-11-20T12:34:56Z']]);
+        $this->stub->script('invite', ['body' => ['ok' => true, 'public_user_id' => self::OTHER, 'created' => true, 'already_active' => false, 'username' => 'schueler.eins', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS', 'expires_at' => '2099-01-02T12:34:56Z']]);
 
         $r = $this->invite(['login_name' => 'schueler.eins']);
 
-        $this->assertSame('2026-11-20T12:34:56Z', $r['json']['invite_expires_at']);
-        $this->assertStringNotContainsString('2026-11-20T12:34', json_encode([$this->app->accounts(), $this->app->auditLog()]));
+        $this->assertSame('2099-01-02T12:34:56Z', $r['json']['invite_expires_at']);
+        $this->assertStringNotContainsString('2099-01-02T12:34', json_encode([$this->app->accounts(), $this->app->auditLog()]));
     }
 
     public function testOhneAblaufdatumDesAnmeldedienstesIstInviteExpiresAtNull(): void
