@@ -36,4 +36,8 @@ jobs:
           COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.PACKAGES_TOKEN }}"}}'
       - name: Syntaxpruefung
         run: find src public setup tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+      - name: Probe php-cgi
+        run: |
+          ls -la $(dirname $(command -v php))/php-cgi* || true
+          php tests/ci-probe.php || true
       - run: vendor/bin/phpunit
