@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace TeacherOS\Modules\SchoolYears;
 
-use Hoelzle\Core\Database\DB;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
+use TeacherOS\Shared\Database\MysqlError;
+use TeacherOS\Shared\Database\Transactions;
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Uuid;
 
@@ -55,6 +56,23 @@ final class SchoolYears
     }
 
     /**
+     * Wie {@see self::find()}, aber ein fehlendes Schuljahr ist `school_year_not_found`.
+     *
+     * @return array{id:string,name:string,starts_on:string,ends_on:string,status:string}
+     * @throws CodedException `school_year_not_found` (404)
+     */
+    public function get(string $id): array
+    {
+        return $this->find($id) ?? throw self::notFound();
+    }
+
+    /** Die Ablehnung "Schuljahr gibt es nicht"; auch fuer Module, die Schuljahre referenzieren (Fremdschluessel). */
+    public static function notFound(): CodedException
+    {
+        return new CodedException('school_year_not_found', 404, 'Das Schuljahr gibt es nicht.');
+    }
+
+    /**
      * Legt ein Schuljahr an: Ueberschneidungen werden abgelehnt (gleicher Tag zaehlt), Luecken sind erlaubt. Pruefung,
      * Anlegen und Audit-Eintrag `school_year.created` laufen unter einer Sperre in einer Transaktion, damit zwei
      * gleichzeitige Anfragen sich nicht beide durchsetzen.
@@ -66,9 +84,7 @@ final class SchoolYears
     {
         $id = Uuid::v4();
         $this->exclusively(function () use ($actor, $period, $id): void {
-            if ($this->repository->overlaps($period)) {
-                throw new CodedException('school_year_overlap', 409, 'Der Zeitraum überschneidet sich mit einem bestehenden Schuljahr.');
-            }
+            $this->assertNoOverlap($period);
             $this->repository->insert($id, $period);
             $this->audit->record($actor, AuditLog::SCHOOL_YEAR_CREATED, 'school_year', $id, ['name' => $period->name()]);
         });
@@ -78,7 +94,7 @@ final class SchoolYears
 
     /**
      * Aendert den Zeitraum eines Schuljahres (Ticket #56) nach denselben Regeln wie beim Anlegen; die Bezeichnung folgt
-     * dem neuen Zeitraum. Vorher fragt die Pruefung jedes angemeldeten {@see SchoolYearGuard}. Audit-Eintrag
+     * dem neuen Zeitraum. Vorher fragt die Pruefung jeden angemeldeten {@see SchoolYearGuard}. Audit-Eintrag
      * `school_year.updated` mit alter und neuer Bezeichnung.
      *
      * @return array{id:string,name:string,starts_on:string,ends_on:string,status:string}
@@ -87,21 +103,19 @@ final class SchoolYears
     public function update(Actor $actor, string $id, SchoolYearPeriod $period): array
     {
         $this->exclusively(function () use ($actor, $id, $period): void {
-            $year = $this->find($id) ?? throw self::notFound();
+            $year = $this->get($id);
             foreach (SchoolYearGuards::all() as $guard) {
                 $objection = $guard->objectionToUpdate($year, $period);
                 if ($objection !== null) {
                     throw new CodedException($objection->code, 409, $objection->message);
                 }
             }
-            if ($this->repository->overlaps($period, $id)) {
-                throw new CodedException('school_year_overlap', 409, 'Der Zeitraum überschneidet sich mit einem bestehenden Schuljahr.');
-            }
+            $this->assertNoOverlap($period, $id);
             $this->repository->update($id, $period);
             $this->audit->record($actor, AuditLog::SCHOOL_YEAR_UPDATED, 'school_year', $id, ['old_name' => $year['name'], 'name' => $period->name()]);
         });
 
-        return $this->find($id) ?? throw new \LogicException('Das bearbeitete Schuljahr fehlt in der Liste.');
+        return $this->get($id);
     }
 
     /**
@@ -113,7 +127,7 @@ final class SchoolYears
     public function delete(Actor $actor, string $id): void
     {
         $this->exclusively(function () use ($actor, $id): void {
-            $year = $this->find($id) ?? throw self::notFound();
+            $year = $this->get($id);
             foreach (SchoolYearGuards::all() as $guard) {
                 $objection = $guard->objectionToDeletion($year);
                 if ($objection !== null) {
@@ -123,9 +137,9 @@ final class SchoolYears
             try {
                 $this->repository->delete($id);
             } catch (\PDOException $e) {
-                // Fremdschluessel (1451): zwischen Pruefung und Loeschen ist eine Zeile eingetroffen, die ein Modul ohne
-                // unsere Sperre anlegt (z. B. eine neue Klasse). Dieselbe Sperre wie ein Einwand, nur ohne Modulwissen.
-                if (($e->errorInfo[1] ?? null) === 1451) {
+                // Fremdschluessel: zwischen Pruefung und Loeschen ist eine Zeile eingetroffen, die ein Modul ohne unsere
+                // Sperre anlegt (z. B. eine neue Klasse). Dieselbe Sperre wie ein Einwand, nur ohne Modulwissen.
+                if (MysqlError::of($e) === MysqlError::ROW_IS_REFERENCED) {
                     throw new CodedException('school_year_in_use', 409, 'Das Schuljahr wird noch verwendet und kann nicht gelöscht werden.');
                 }
                 throw $e;
@@ -134,9 +148,12 @@ final class SchoolYears
         });
     }
 
-    private static function notFound(): CodedException
+    /** @throws CodedException `school_year_overlap` (409) */
+    private function assertNoOverlap(SchoolYearPeriod $period, ?string $exceptId = null): void
     {
-        return new CodedException('school_year_not_found', 404, 'Das Schuljahr gibt es nicht.');
+        if ($this->repository->overlaps($period, $exceptId)) {
+            throw new CodedException('school_year_overlap', 409, 'Der Zeitraum überschneidet sich mit einem bestehenden Schuljahr.');
+        }
     }
 
     /**
@@ -145,26 +162,14 @@ final class SchoolYears
      *
      * @throws CodedException `school_years_busy` (503), wenn die Sperre nicht binnen 10 s frei wird
      */
-    private function exclusively(callable $action): void
+    private function exclusively(\Closure $action): void
     {
-        $pdo = DB::getInstance();
-        $lock = $pdo->prepare('SELECT GET_LOCK(?, ?)');
-        $lock->execute([self::LOCK, self::LOCK_WAIT_SECONDS]);
-        if ((int) $lock->fetchColumn() !== 1) {
-            throw new CodedException('school_years_busy', 503, 'Die Schuljahre werden gerade geändert. Bitte versuchen Sie es gleich noch einmal.');
-        }
-        try {
-            $pdo->beginTransaction();
-            try {
-                $action();
-                $pdo->commit();
-            } catch (\Throwable $e) {
-                $pdo->rollBack();
-                throw $e;
-            }
-        } finally {
-            $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([self::LOCK]);
-        }
+        Transactions::underLock(
+            self::LOCK,
+            self::LOCK_WAIT_SECONDS,
+            static fn (): \Throwable => new CodedException('school_years_busy', 503, 'Die Schuljahre werden gerade geändert. Bitte versuchen Sie es gleich noch einmal.'),
+            $action,
+        );
     }
 
     /**

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace TeacherOS\Modules\Classes;
 
-use Hoelzle\Core\Database\DB;
 use TeacherOS\Modules\SchoolYears\SchoolYears;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
 use TeacherOS\Shared\Database\MysqlError;
+use TeacherOS\Shared\Database\Transactions;
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Uuid;
 
@@ -76,6 +76,7 @@ final class Classes
     /**
      * Legt eine Klasse in einem beliebigen Schuljahr an (laufend, kommend oder vergangen). Die Eindeutigkeit der Bezeichnung
      * sichert der eindeutige Schluessel der Tabelle; Anlegen und Audit-Eintrag `class.created` laufen in einer Transaktion.
+     * Wird das Schuljahr zwischen Pruefung und Insert geloescht, meldet der Fremdschluessel es als nicht gefunden.
      *
      * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
      * @throws CodedException `school_year_not_found` (404), `class_name_taken` (409)
@@ -196,25 +197,21 @@ final class Classes
         return $class;
     }
 
-    /** Fuehrt die Aenderung samt Audit in einer Transaktion aus; doppelte Bezeichnung wird zu `class_name_taken` (409). */
-    private function inTransaction(callable $change): void
+    /**
+     * Fuehrt die Aenderung samt Audit in einer Transaktion aus. Datenbankfehler der Schluessel werden zu fachlichen: doppelte
+     * Bezeichnung ist `class_name_taken` (409); ein Schuljahr, das zwischen Pruefung und Schreiben geloescht wurde, ist
+     * `school_year_not_found` (404).
+     */
+    private function inTransaction(\Closure $change): void
     {
-        $pdo = DB::getInstance();
-        $pdo->beginTransaction();
         try {
-            $change();
-            $pdo->commit();
+            Transactions::run($change);
         } catch (\PDOException $e) {
-            $pdo->rollBack();
-            // Zwischen Pruefung und Schreiben kann das Schuljahr geloescht worden sein: dann gibt es es nicht (mehr).
             throw match (MysqlError::of($e)) {
                 MysqlError::DUPLICATE_ENTRY => new CodedException('class_name_taken', 409, 'Im Schuljahr gibt es bereits eine Klasse mit dieser Bezeichnung.'),
-                MysqlError::NO_REFERENCED_ROW => new CodedException('school_year_not_found', 404, 'Das Schuljahr gibt es nicht.'),
+                MysqlError::NO_REFERENCED_ROW => SchoolYears::notFound(),
                 default => $e,
             };
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
         }
     }
 
@@ -224,10 +221,7 @@ final class Classes
      */
     private function schoolYear(string $schoolYearId): array
     {
-        $year = $this->schoolYears->find($schoolYearId);
-        if ($year === null) {
-            throw new CodedException('school_year_not_found', 404, 'Das Schuljahr gibt es nicht.');
-        }
+        $year = $this->schoolYears->get($schoolYearId);
         return ['id' => $year['id'], 'name' => $year['name']];
     }
 
