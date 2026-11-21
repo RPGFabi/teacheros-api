@@ -80,7 +80,7 @@ _Avoid_: Lizenz, Feature-Flag, Entitlement, Aktivierung
 
 **Schuleinstellung**:
 Ein Wert, den die Schule selbst für ihre ganze Schulinstanz festlegt, gleich für alle Schuljahre (z. B. wie viele Lehrkräfte eine Fachgruppe höchstens zugleich hat). Wird ein Wert verschärft, bleibt Bestehendes unberührt; die Regel gilt nur für Neues. Anders als die Modulfreigabe setzt sie die Schule, nicht der Betreiber.
-_Avoid_: Konfiguration, Setting, Option
+_Avoid_: Konfiguration, Option
 
 ## Stammdaten
 
