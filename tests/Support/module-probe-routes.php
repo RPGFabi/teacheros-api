@@ -16,6 +16,7 @@ use TeacherOS\Modules\Classes\ClassLinkGuard;
 use TeacherOS\Modules\Classes\ClassLinkGuards;
 use TeacherOS\Modules\Classes\ClassRoutes;
 use TeacherOS\Modules\SchoolYears\SchoolYear;
+use TeacherOS\Modules\SchoolSettings\SchoolLimits;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuard;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
 use TeacherOS\Modules\SchoolYears\SchoolYearObjection;
@@ -91,6 +92,20 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
     ClassRoutes::register($router, (new ClassesModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-classes');
     SubjectRoutes::register($router, (new SubjectsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-subjects');
     TeachingGroupRoutes::register($router, (new TeachingGroupsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-teaching-groups');
+
+    // Stellvertretend fuer ein spaeteres Zuordnungs-Modul (#67, #68): liest die Obergrenzen der Schuleinstellungen
+    // ausschliesslich ueber den Dienst SchoolLimits, ohne deren Speicherung zu kennen.
+    $router->get(
+        '/api/test/school-limits',
+        static function (Request $request, Response $response): void {
+            $limits = new SchoolLimits();
+            $response->json([
+                'max_teachers_per_teaching_group' => $limits->maxTeachersPerTeachingGroup(),
+                'max_class_leaders_per_class' => $limits->maxClassLeadersPerClass(),
+            ]);
+        },
+        ModuleGate::route(ModuleCatalog::CORE, [RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]),
+    );
 
     // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57).
     $points->get(SchoolYearGuards::class)->register(new TestSchoolYearGuard());
