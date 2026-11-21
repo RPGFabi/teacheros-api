@@ -53,7 +53,7 @@ final class RolesViewTest extends TestCase
         $this->assertSame(200, $r['status']);
         $byKey = array_column($r['json']['permissions'], null, 'key');
         $this->assertEqualsCanonicalizing(
-            ['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'],
+            ['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage', 'school_settings.manage'],
             array_keys($byKey),
         );
         $this->assertSame(['key' => 'roles.manage', 'name' => 'Rollen verwalten', 'group' => 'Rollen und Rechte'], $byKey['roles.manage']);
@@ -141,7 +141,7 @@ final class RolesViewTest extends TestCase
 
         $this->assertTrue($roles['schuladmin']['all_permissions']);
         $this->assertEqualsCanonicalizing(
-            ['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'],
+            ['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage', 'school_settings.manage'],
             $roles['schuladmin']['permissions'],
         );
         $this->assertStringNotContainsString('"*"', $this->call('/api/roles')['body']);
