@@ -91,7 +91,7 @@ final class AuthStub
         ];
     }
 
-    /** Haengt die naechste Antwort fuer `invite`, `delete`, `disable-login` oder `enable-login` an ({status, body, delay}); je Aufruf wird eine verbraucht. */
+    /** Haengt die naechste Antwort fuer `invite`, `delete`, `disable-login`, `enable-login` oder `mfa-requirement` an ({status, body, delay}); je Aufruf wird eine verbraucht. */
     public function script(string $endpoint, array $response): void
     {
         $ctx = stream_context_create(['http' => [
@@ -127,7 +127,13 @@ final class AuthStub
     }
 
     /** @return list<array{path:string, body:?array, signature_valid:bool, content_type:string}> */
-    private function callsTo(string $path): array
+    public function mfaRequirementCalls(): array
+    {
+        return $this->callsTo('/internal/users/mfa-requirement');
+    }
+
+    /** @return list<array{path:string, body:?array, signature_valid:bool, content_type:string}> */
+    public function callsTo(string $path): array
     {
         return array_values(array_filter($this->calls(), static fn ($c) => $c['path'] === $path));
     }

@@ -30,7 +30,32 @@ final class AuthenticationMiddleware
         return Actor::account(self::current()->account->publicUserId);
     }
 
+    /** Fachliche Routen: zusaetzlich zur Anmeldung gilt die MFA-Pflicht (ADR 0002 B3). */
     public static function handle(Request $request, Response $response): bool
+    {
+        if (!self::authenticate($request, $response)) {
+            return false;
+        }
+        $session = self::current();
+        if ($session->account->mfaRequired && !$session->token->usedMfa) {
+            // B3: Konto mit Pflichtrolle, aber ohne zweiten Faktor angemeldet. Das Web fuehrt dann durch die Einrichtung.
+            self::$current = null;
+            $response->json(['error' => 'MFA enrollment required', 'code' => 'mfa_enrollment_required'], 403);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Nur fuer Routen, die ein Konto vor der MFA-Einrichtung braucht (B3: `GET /api/me`). Die Einrichtung selbst
+     * laeuft beim Anmeldedienst; die API muss dafuer nichts weiter freigeben.
+     */
+    public static function handleAllowingMfaEnrollment(Request $request, Response $response): bool
+    {
+        return self::authenticate($request, $response);
+    }
+
+    private static function authenticate(Request $request, Response $response): bool
     {
         self::$current = null;
         $jwt = $request->getBearerToken();

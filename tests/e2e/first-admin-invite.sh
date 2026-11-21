@@ -102,12 +102,39 @@ me="$(curl -s "http://127.0.0.1:$API_PORT/api/me" -H "Authorization: Bearer $jwt
 [ "$(json "$me" account.status)" = active ] || fail "Konto nicht aktiv: $me"
 echo "$me" | grep -q '"accounts.invite"' || fail "Rechte des Schuladmins fehlen: $me"
 
+# 5b. MFA-Pflicht (Ticket #15, ADR 0002 B3/G2): ohne TOTP sperrt die API fachliche Routen; die Pflicht ist an den
+#     Anmeldedienst gespiegelt. Einrichtung beim Anmeldedienst, erneuter Login mit Code, danach Zugriff.
+totp() { php -r '$s = strtoupper(str_replace([" ", "="], "", $argv[1])); $abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; $bits = "";
+  foreach (str_split($s) as $c) { $bits .= str_pad(decbin(strpos($abc, $c)), 5, "0", STR_PAD_LEFT); }
+  $key = ""; foreach (str_split($bits, 8) as $o) { if (strlen($o) === 8) { $key .= chr(bindec($o)); } }
+  $h = hash_hmac("sha1", pack("J", intdiv(time(), 30)), $key, true); $off = ord($h[19]) & 15;
+  echo str_pad((string) ((unpack("N", substr($h, $off, 4))[1] & 0x7fffffff) % 1000000), 6, "0", STR_PAD_LEFT);' "$1"; }
+[ "$(json "$me" session.mfa_enrollment_required)" = 1 ] || fail "Schuladmin ohne TOTP muss zur Einrichtung: $me"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$API_PORT/api/accounts" -H "Authorization: Bearer $jwt")"
+[ "$code" = 403 ] || fail "fachliche Route ohne MFA muss 403 liefern, war HTTP $code"
+mfa_status="$(curl -s "$AUTH/mfa" -H "Authorization: Bearer $jwt")"
+[ "$(json "$mfa_status" required)" = 1 ] || fail "MFA-Pflicht nicht an den Anmeldedienst gespiegelt: $mfa_status"
+setup="$(curl -s -X POST "$AUTH/mfa/setup" -H "Authorization: Bearer $jwt")"
+secret="$(json "$setup" secret)"
+[ -n "$secret" ] || fail "MFA-Einrichtung ohne Schluessel: $setup"
+confirm="$(curl -s -X POST "$AUTH/mfa/setup/confirm" -H 'Content-Type: application/json' -d "{\"setup_token\":\"$(json "$setup" setup_token)\",\"code\":\"$(totp "$secret")\"}")"
+[ "$(json "$confirm" enabled)" = 1 ] || fail "MFA-Einrichtung nicht bestaetigt: $confirm"
+sleep $((31 - $(date +%s) % 30)) # der Code der Einrichtung ist verbraucht: auf das naechste 30-s-Fenster warten
+challenge="$(curl -s -X POST "$AUTH/login" -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")"
+[ "$(json "$challenge" mfa_required)" = 1 ] || fail "Login nach der Einrichtung ohne MFA-Challenge: $challenge"
+verified="$(curl -s -X POST "$AUTH/mfa/challenge/verify" -H 'Content-Type: application/json' -d "{\"challenge_token\":\"$(json "$challenge" challenge_token)\",\"code\":\"$(totp "$secret")\"}")"
+jwt="$(php -r '$r = json_decode($argv[1], true); echo $r["token"] ?? "";' "$verified")"
+[ -n "$jwt" ] || fail "kein Token nach der MFA-Challenge: $verified"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$API_PORT/api/accounts" -H "Authorization: Bearer $jwt")"
+[ "$code" = 200 ] || fail "fachliche Route mit MFA muss 200 liefern, war HTTP $code"
+
 # 6. Audit: wer, was, ohne E-Mail
 audit="$(H="$DB_HOST" P="$DB_PORT" N="$API_DB" U="$DB_USER" PW="$DB_PASSWORD" php -r '
   $pdo = new PDO("mysql:host=".getenv("H").";port=".getenv("P").";dbname=".getenv("N").";charset=utf8mb4", getenv("U"), getenv("PW"));
   echo implode(",", $pdo->query("SELECT CONCAT(actor_type, \":\", action) FROM audit_log ORDER BY id")->fetchAll(PDO::FETCH_COLUMN));
   echo "|", $pdo->query("SELECT COUNT(*) FROM audit_log WHERE CONCAT_WS(\" \", action, object_id, IFNULL(context, \"\")) LIKE \"%@%\"")->fetchColumn();')"
-[ "$audit" = "cli:account.invited,cli:role.assigned,cli:account.reinvited,account:account.activated|0" ] || fail "Audit-Eintraege unerwartet: $audit"
+# Die fuenf Standardrollen aus Migration 0008 (Ticket #32) stehen zuerst.
+[ "$audit" = "cli:role.created,cli:role.created,cli:role.created,cli:role.created,cli:role.created,cli:account.invited,cli:role.assigned,cli:account.reinvited,account:account.activated|0" ] || fail "Audit-Eintraege unerwartet: $audit"
 
 # 7. Durchlauf per Anmeldename und Code
 login_status() { curl -s -o /dev/null -w '%{http_code}' -X POST "$AUTH/login" -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}"; }

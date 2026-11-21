@@ -231,6 +231,11 @@ Erlaubt bleiben nur `GET /api/me` und die Routen, die das Frontend zur Einrichtu
 
 **Pflichttest:** Eine Lehrkraft ohne TOTP erhält 403, nach der Einrichtung und erneutem Login hat sie Zugriff.
 
+**Nachtrag (Umsetzung Ticket #15, 2026-11-19):**
+- Die Prüfung läuft nach den 401-Prüfungen von B1/B2 und vor jeder Rechteprüfung. Ausgenommen ist nur `GET /api/me`; es nennt `session.mfa_enrollment_required`.
+- Spiegeln wie bei der Deaktivierung: zuerst lokal (`mfa_required`, Markierung `mfa_sync_pending` in derselben Transaktion), nach dem Commit `mfa-requirement`. Ein Fehler lässt die lokale Durchsetzung bestehen; die Markierung wird beim nächsten Abgleich nachgeholt, automatisch später über die Outbox (#39).
+- Fällt die Pflicht weg, meldet die API `required: false`; ein eingerichtetes TOTP bleibt aktiv.
+
 ### B4 – Rechteverwaltung über `PHP-Permissions` (P1–P3)
 
 Der `AccessAdministration`-Service ist der **einzige** Weg zu `UserPermissionService::createRole/updateRole/deleteRole/setUserAccess`. Er führt zu jeder Aktion einen Audit-Eintrag.

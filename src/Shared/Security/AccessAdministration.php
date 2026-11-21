@@ -258,7 +258,10 @@ final class AccessAdministration
         });
     }
 
-    /** Fuehrt $work in einer Transaktion aus (oder in der des Aufrufers). */
+    /**
+     * Fuehrt $work in einer Transaktion aus (oder in der des Aufrufers). Wer die Transaktion selbst oeffnet, spiegelt nach
+     * dem Commit geaenderte MFA-Pflichten an den Anmeldedienst (Ticket #15); bei einer fremden Transaktion tut das deren Besitzer.
+     */
     private function atomically(callable $work): void
     {
         $pdo = DB::getInstance();
@@ -274,6 +277,7 @@ final class AccessAdministration
             $pdo->rollBack();
             throw $e;
         }
+        (new MfaRequirementSync())->pushPending();
     }
 
     // --- Rollen anlegen, bearbeiten, loeschen (Ticket #33) ---

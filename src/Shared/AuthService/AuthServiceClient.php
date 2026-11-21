@@ -108,6 +108,22 @@ final class AuthServiceClient
     }
 
     /**
+     * Setzt oder hebt die MFA-Pflicht von Konten im Anmeldedienst auf (G2, idempotent, hoechstens 200 IDs). Mit Pflicht kann
+     * ein Konto TOTP nicht selbst abschalten; ohne Pflicht bleibt ein eingerichtetes TOTP unveraendert aktiv.
+     *
+     * @param list<string> $publicUserIds
+     * @throws AuthServiceUnavailableException
+     * @throws CodedException wie bei {@see invite()}
+     */
+    public function setMfaRequirement(array $publicUserIds, bool $required): void
+    {
+        [$status, $json] = $this->post('/internal/users/mfa-requirement', ['event' => 'user.mfa_requirement', 'public_user_ids' => array_values($publicUserIds), 'required' => $required]);
+        if ($status !== 200 || ($json['ok'] ?? false) !== true) { // 200 ohne lesbares {"ok": true} gilt nicht als Erfolg
+            throw $this->failure($status, $json, 'das Spiegeln der MFA-Pflicht');
+        }
+    }
+
+    /**
      * Uebersetzt eine nicht erfolgreiche Antwort: fachliche 4xx (mit `code`, bei 400 mit lesbarer Antwort auch ohne: `invalid_request`)
      * gehen mit ihrem Status und Code an den Aufrufer; alles andere (5xx, Fehlkonfiguration wie ein falsches
      * Secret, unlesbare Antwort) ist "Anmeldedienst nicht verfuegbar".
