@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TeacherOS\Modules\ClassLeaders;
 
 use TeacherOS\Modules\Classes\ClassLinkGuard;
+use TeacherOS\Shared\Assignments\AssignmentRepository;
 
 /**
  * Verknuepfung der Klassenleitung an der Klasse (Tickets #57, #68; GLOSSARY.md: Archivierung): Eine Klasse, der mindestens
@@ -14,8 +15,11 @@ use TeacherOS\Modules\Classes\ClassLinkGuard;
  */
 final class ClassLeadersClassLinkGuard implements ClassLinkGuard
 {
-    public function __construct(private readonly ClassLeaderRepository $repository = new ClassLeaderRepository())
+    private readonly AssignmentRepository $repository;
+
+    public function __construct(?AssignmentRepository $repository = null)
     {
+        $this->repository = $repository ?? new AssignmentRepository(ClassLeaderKind::get());
     }
 
     public function label(): string
@@ -23,8 +27,8 @@ final class ClassLeadersClassLinkGuard implements ClassLinkGuard
         return 'Klassenleitung';
     }
 
-    public function isLinked(string $classId): bool
+    public function isLinked(string $id): bool
     {
-        return $this->repository->classHasLeaders($classId);
+        return $this->repository->parentHasAssignments($id);
     }
 }

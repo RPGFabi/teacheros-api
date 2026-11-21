@@ -240,25 +240,22 @@ final class AccountRepository
     }
 
     /**
-     * Kennung, Anmeldename, E-Mail und Status der Konten mit diesen Kennungen (jeder Status); unbekannte fehlen.
+     * Die Anmeldenamen der Konten mit diesen Kennungen (jeder Status); unbekannte fehlen. Nur der Name, keine E-Mail und kein
+     * Status: fuer Ausgaben, die ein Konto nur benennen.
      *
      * @param list<string> $publicUserIds
-     * @return array<string,array{id:string,email:?string,login_name:string,status:string}> nach Kennung
+     * @return array<string,string> Anmeldename nach Kennung
      */
-    public function summaries(array $publicUserIds): array
+    public function loginNames(array $publicUserIds): array
     {
         if ($publicUserIds === []) {
             return [];
         }
         $stmt = DB::getInstance()->prepare(
-            'SELECT `public_user_id` AS id, `email`, `login_name`, `status` FROM `accounts` WHERE `public_user_id` IN (' . implode(',', array_fill(0, count($publicUserIds), '?')) . ')'
+            'SELECT `public_user_id`, `login_name` FROM `accounts` WHERE `public_user_id` IN (' . implode(',', array_fill(0, count($publicUserIds), '?')) . ')'
         );
         $stmt->execute(array_values($publicUserIds));
-        $byId = [];
-        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-            $byId[$row['id']] = $row;
-        }
-        return $byId;
+        return $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
     }
 
     /** @return list<string> public_user_ids der nur eingeladenen Konten mit der Rolle $roleKey */
