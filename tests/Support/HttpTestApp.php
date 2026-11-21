@@ -175,6 +175,18 @@ final class HttpTestApp
         $this->pdo()->exec('DELETE FROM `audit_log`');
     }
 
+    /** Entfernt alle gespeicherten Schuleinstellungen (Testaufbau): danach gelten die Standardwerte. */
+    public function resetSchoolSettings(): void
+    {
+        $this->pdo()->exec('DELETE FROM `school_settings`');
+    }
+
+    /** @return list<array<string,mixed>> Audit-Eintraege `school_setting.updated` in Reihenfolge */
+    public function schoolSettingAudit(): array
+    {
+        return $this->pdo()->query("SELECT * FROM `audit_log` WHERE `action` = 'school_setting.updated' ORDER BY `id`")->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     /** Entfernt alle Klassen (Testaufbau). */
     public function resetClasses(): void
     {

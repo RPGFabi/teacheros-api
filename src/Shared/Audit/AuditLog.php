@@ -72,6 +72,8 @@ final class AuditLog
 
     /** Ein Fach wurde angelegt (Ticket #62); Objekt: Kennung des Faches, Kontext: code (Kuerzel), name (Bezeichnung). */
     public const SUBJECT_CREATED = 'subject.created';
+    /** Eine Schuleinstellung wurde geaendert (Ticket #66); Objekt: Schluessel der Einstellung, Kontext: old_value (alter Wert; ohne gespeicherten Wert der Standard), value (neuer Wert). */
+    public const SCHOOL_SETTING_UPDATED = 'school_setting.updated';
 
     /** Die Bezeichnung eines Faches wurde geaendert (Ticket #63); Objekt: Kennung, Kontext: code (Kuerzel), old_name (alte Bezeichnung), name (neue Bezeichnung). */
     public const SUBJECT_UPDATED = 'subject.updated';

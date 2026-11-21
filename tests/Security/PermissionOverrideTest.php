@@ -407,7 +407,7 @@ final class PermissionOverrideTest extends TestCase
 
         $this->assertSame(200, $r['status']);
         $actions = $this->actionsByPermission($r);
-        $this->assertSame(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage', 'subjects.view', 'subjects.manage'], array_column($r['json']['permission_actions'], 'permission'), 'Katalogreihenfolge, eine Aktion je Recht');
+        $this->assertSame(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage', 'subjects.view', 'subjects.manage', 'school_settings.manage'], array_column($r['json']['permission_actions'], 'permission'), 'Katalogreihenfolge, eine Aktion je Recht');
         $this->assertSame('Konten ansehen', $actions['accounts.view']['name']);
         $this->assertSame('Konten', $actions['accounts.view']['group']);
         $this->assertSame(['action' => 'withdraw', 'allowed' => true, 'code' => null, 'reason' => null], array_intersect_key($actions['accounts.view'], array_flip(['action', 'allowed', 'code', 'reason'])), 'Recht aus Rolle: entziehen');

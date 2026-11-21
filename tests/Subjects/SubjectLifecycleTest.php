@@ -479,7 +479,7 @@ final class SubjectLifecycleTest extends TestCase
         $id = $this->createSubject('Ma');
         $this->act($id, 'archive');
 
-        $this->app->rerunMigrations('0020_subjects_archived.php');
+        $this->app->rerunMigrations('0021_subjects_archived.php');
 
         $this->assertNotNull($this->row($id)['archived_at'], 'Archivierung bleibt erhalten');
     }
