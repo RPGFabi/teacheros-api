@@ -176,6 +176,7 @@ final class HttpTestApp
     /** Entfernt alle Klassen (Testaufbau). */
     public function resetClasses(): void
     {
+        $this->resetTeachingGroups();
         $this->pdo()->exec('DELETE FROM `test_class_links`');
         $this->pdo()->exec('DELETE FROM `classes`');
     }
@@ -195,7 +196,27 @@ final class HttpTestApp
     /** Entfernt alle Faecher (Testaufbau). */
     public function resetSubjects(): void
     {
+        $this->resetTeachingGroups();
         $this->pdo()->exec('DELETE FROM `subjects`');
+    }
+
+    /** Entfernt alle Fachgruppen samt ihrer Klassen (Testaufbau). */
+    public function resetTeachingGroups(): void
+    {
+        $this->pdo()->exec('DELETE FROM `teaching_group_classes`');
+        $this->pdo()->exec('DELETE FROM `teaching_groups`');
+    }
+
+    /** @return list<array<string,mixed>> nach Anlegezeitpunkt */
+    public function teachingGroups(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `teaching_groups` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function teachingGroupClasses(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `teaching_group_classes` ORDER BY `teaching_group_id`, `class_id`')->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /** @return list<array<string,mixed>> nach Anlegezeitpunkt */

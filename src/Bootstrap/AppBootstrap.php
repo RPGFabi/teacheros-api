@@ -18,6 +18,7 @@ use TeacherOS\Modules\Classes\ClassesModule;
 use TeacherOS\Modules\Subjects\SubjectsModule;
 use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Modules\SchoolYears\SchoolYearsModule;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupsModule;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 use TeacherOS\Shared\Modules\ModuleEntitlements;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
@@ -105,7 +106,7 @@ final class AppBootstrap
         // Stammdaten (Spec #17, ebenfalls `core`): jedes Modul meldet seine Routen und seine Pruefungen an den Erweiterungspunkten
         // anderer Module selbst an (ModuleRegistration); hier steht nur die Liste. Neue Module kommen in diese Liste.
         $points = new ExtensionPoints();
-        foreach ([new SchoolYearsModule(), new ClassesModule(), new SubjectsModule()] as $module) {
+        foreach ([new SchoolYearsModule(), new ClassesModule(), new SubjectsModule(), new TeachingGroupsModule()] as $module) {
             $module->register($router, $points);
         }
 

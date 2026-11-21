@@ -89,13 +89,13 @@ final class Classes
         $id = Uuid::v4();
         $this->inTransaction(function () use ($id, $input, $actor): void {
             $this->repository->insert($id, $input);
-            $this->audit->record($actor, AuditLog::CLASS_CREATED, 'class', $id, ['name' => $input->change->name]);
+            $this->audit->record($actor, AuditLog::CLASS_CREATED, 'class', $id, ['name' => $input->attributes->name]);
         });
-        return self::present(['id' => $id, 'grade_level' => $input->change->gradeLevel, 'name' => $input->change->name, 'archived' => false], $year);
+        return self::present(['id' => $id, 'grade_level' => $input->attributes->gradeLevel, 'name' => $input->attributes->name, 'archived' => false], $year);
     }
 
     /**
-     * Aendert Klassenstufe und Bezeichnung nach denselben Regeln wie beim Anlegen ({@see ClassChange}). Die Eingabe kommt
+     * Aendert Klassenstufe und Bezeichnung nach denselben Regeln wie beim Anlegen ({@see ClassAttributes}). Die Eingabe kommt
      * roh und wird erst geprueft, wenn die Klasse gesperrt und als aenderbar erkannt ist: unbekannt (404) und archiviert
      * (409) gehen der Eingabepruefung (400) vor. Das Schuljahr ist nicht aenderbar: ein abweichendes
      * `$claimedSchoolYearId` wird abgelehnt. Eine archivierte Klasse ist schreibgeschuetzt.
@@ -105,8 +105,8 @@ final class Classes
      */
     public function update(Actor $actor, string $id, mixed $gradeLevel, mixed $name, mixed $claimedSchoolYearId = null): SchoolClass
     {
-        $before = $change = null;
-        $this->inTransaction(function () use ($id, $gradeLevel, $name, $actor, $claimedSchoolYearId, &$before, &$change): void {
+        $before = $attributes = null;
+        $this->inTransaction(function () use ($id, $gradeLevel, $name, $actor, $claimedSchoolYearId, &$before, &$attributes): void {
             $before = $this->lockedClass($id);
             if ($before['archived']) {
                 throw new CodedException('class_archived', 409, 'Die Klasse ist archiviert und kann nicht geändert werden. Bitte zuerst wiederherstellen.');
@@ -114,11 +114,11 @@ final class Classes
             if ($claimedSchoolYearId !== null && $claimedSchoolYearId !== $before['school_year_id']) {
                 throw new CodedException('invalid_request', 400, 'Das Schuljahr einer Klasse lässt sich nicht ändern.');
             }
-            $change = ClassChange::fromInput($gradeLevel, $name);
-            $this->repository->update($id, $change);
-            $this->audit->record($actor, AuditLog::CLASS_UPDATED, 'class', $id, ['old_name' => $before['name'], 'name' => $change->name]);
+            $attributes = ClassAttributes::fromInput($gradeLevel, $name);
+            $this->repository->update($id, $attributes);
+            $this->audit->record($actor, AuditLog::CLASS_UPDATED, 'class', $id, ['old_name' => $before['name'], 'name' => $attributes->name]);
         });
-        return self::present(['id' => $id, 'grade_level' => $change->gradeLevel, 'name' => $change->name, 'archived' => false], $this->schoolYear($before['school_year_id']));
+        return self::present(['id' => $id, 'grade_level' => $attributes->gradeLevel, 'name' => $attributes->name, 'archived' => false], $this->schoolYear($before['school_year_id']));
     }
 
     /**

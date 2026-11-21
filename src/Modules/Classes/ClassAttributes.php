@@ -8,14 +8,14 @@ use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Text\Text;
 
 /**
- * Die pruefbaren Eigenschaften einer Klasse (GLOSSARY.md: Klasse, Klassenstufe): Klassenstufe als ganze Zahl von 1 bis 13
+ * Die geprueften Eigenschaften einer Klasse ohne ihr Schuljahr (GLOSSARY.md: Klasse, Klassenstufe), beim Anlegen wie beim Bearbeiten gleich: Klassenstufe als ganze Zahl von 1 bis 13
  * und Bezeichnung, die nach dem Trimmen 1 bis 20 Zeichen hat. Getrimmt wird Unicode-bewusst (auch geschuetzte und andere
  * Leerzeichen, Zeilenumbrueche und unsichtbare Zeichen am Rand); eine Bezeichnung nur aus solchem Leerraum ist ungueltig.
  * Mit ext-intl wird die Bezeichnung zusaetzlich nach NFC normalisiert, damit "7ä" als ein Zeichen und als "a" plus
  * Trema dieselbe Bezeichnung ist; ohne ext-intl unterbleibt das (docs/workspace.md). Gilt beim Anlegen ({@see ClassInput}) und beim Bearbeiten
  * gleichermassen; die Bezeichnung wird nicht gegen die Klassenstufe geprueft.
  */
-final class ClassChange
+final class ClassAttributes
 {
     public const MIN_GRADE_LEVEL = 1;
     public const MAX_GRADE_LEVEL = 13;

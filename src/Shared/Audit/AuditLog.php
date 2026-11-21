@@ -73,6 +73,9 @@ final class AuditLog
     /** Ein Fach wurde angelegt (Ticket #62); Objekt: Kennung des Faches, Kontext: code (Kuerzel), name (Bezeichnung). */
     public const SUBJECT_CREATED = 'subject.created';
 
+    /** Eine Fachgruppe wurde angelegt (Ticket #64); Objekt: Kennung der Fachgruppe, Kontext: name (Bezeichnung); Schuljahr, Fach und Klassen gehoeren nicht in den Kontext. */
+    public const TEACHING_GROUP_CREATED = 'teaching_group.created';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {
