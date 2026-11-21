@@ -196,7 +196,7 @@ final class RoleActionsTest extends TestCase
     {
         $admin = $this->get()['json']['create'];
         $this->assertAllowed($admin);
-        $this->assertCount(12, $admin['permission_actions']);
+        $this->assertCount(14, $admin['permission_actions']);
         array_map($this->assertAllowed(...), $admin['permission_actions']);
 
         $manager = $this->get(self::MANAGER)['json']['create'];
@@ -213,6 +213,6 @@ final class RoleActionsTest extends TestCase
 
         $this->assertSame(201, $r['status'], $r['body']);
         $this->assertSame(['edit', 'delete', 'set_mfa'], array_column($r['json']['role']['actions'], 'action'));
-        $this->assertCount(12, $r['json']['role']['permission_actions']);
+        $this->assertCount(14, $r['json']['role']['permission_actions']);
     }
 }
