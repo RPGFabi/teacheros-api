@@ -15,10 +15,11 @@ use TeacherOS\Modules\Classes\ClassesModule;
 use TeacherOS\Modules\Classes\ClassLinkGuard;
 use TeacherOS\Modules\Classes\ClassLinkGuards;
 use TeacherOS\Modules\Classes\ClassRoutes;
+use TeacherOS\Modules\SchoolYears\SchoolYear;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuard;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
 use TeacherOS\Modules\SchoolYears\SchoolYearObjection;
-use TeacherOS\Modules\SchoolYears\SchoolYearPeriod;
+use TeacherOS\Modules\SchoolYears\SchoolYearSpan;
 use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Modules\SchoolYears\SchoolYearsModule;
 use TeacherOS\Modules\Subjects\SubjectRoutes;
@@ -36,14 +37,14 @@ use TeacherOS\Shared\Security\RequirePermission;
  */
 final class TestSchoolYearGuard implements SchoolYearGuard
 {
-    public function objectionToUpdate(array $year, SchoolYearPeriod $newPeriod): ?SchoolYearObjection
+    public function objectionToUpdate(SchoolYear $year, SchoolYearSpan $newSpan): ?SchoolYearObjection
     {
-        return $this->blocked($year['id'], 'update') ? new SchoolYearObjection('test_update_blocked', 'Test: Aendern gesperrt.') : null;
+        return $this->blocked($year->id, 'update') ? new SchoolYearObjection('test_update_blocked', 'Test: Aendern gesperrt.') : null;
     }
 
-    public function objectionToDeletion(array $year): ?SchoolYearObjection
+    public function objectionToDeletion(SchoolYear $year): ?SchoolYearObjection
     {
-        return $this->blocked($year['id'], 'delete') ? new SchoolYearObjection('test_delete_blocked', 'Test: Loeschen gesperrt.') : null;
+        return $this->blocked($year->id, 'delete') ? new SchoolYearObjection('test_delete_blocked', 'Test: Loeschen gesperrt.') : null;
     }
 
     private function blocked(string $schoolYearId, string $action): bool

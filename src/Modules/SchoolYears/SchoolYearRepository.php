@@ -25,18 +25,18 @@ final class SchoolYearRepository
      * Gibt es ein Schuljahr, das sich mit dem Zeitraum ueberschneidet? Ein gemeinsamer Tag zaehlt als Ueberschneidung.
      * Beim Bearbeiten bleibt das Schuljahr `$exceptId` selbst ausser Betracht.
      */
-    public function overlaps(SchoolYearPeriod $period, ?string $exceptId = null): bool
+    public function overlaps(SchoolYearSpan $span, ?string $exceptId = null): bool
     {
         $stmt = DB::getInstance()->prepare('SELECT 1 FROM `school_years` WHERE `starts_on` <= :ends AND `ends_on` >= :starts AND (:except IS NULL OR `id` <> :except2) LIMIT 1');
-        $stmt->execute(['starts' => $period->startsOn, 'ends' => $period->endsOn, 'except' => $exceptId, 'except2' => $exceptId]);
+        $stmt->execute(['starts' => $span->startsOn, 'ends' => $span->endsOn, 'except' => $exceptId, 'except2' => $exceptId]);
         return $stmt->fetchColumn() !== false;
     }
 
-    public function update(string $id, SchoolYearPeriod $period): void
+    public function update(string $id, SchoolYearSpan $span): void
     {
         DB::getInstance()
             ->prepare('UPDATE `school_years` SET `starts_on` = :starts, `ends_on` = :ends WHERE `id` = :id')
-            ->execute(['id' => $id, 'starts' => $period->startsOn, 'ends' => $period->endsOn]);
+            ->execute(['id' => $id, 'starts' => $span->startsOn, 'ends' => $span->endsOn]);
     }
 
     /** @throws \PDOException wenn noch Zeilen auf das Schuljahr verweisen (Fremdschluessel, Fehler 1451) */
@@ -45,10 +45,10 @@ final class SchoolYearRepository
         DB::getInstance()->prepare('DELETE FROM `school_years` WHERE `id` = :id')->execute(['id' => $id]);
     }
 
-    public function insert(string $id, SchoolYearPeriod $period): void
+    public function insert(string $id, SchoolYearSpan $span): void
     {
         DB::getInstance()
             ->prepare('INSERT INTO `school_years` (`id`, `starts_on`, `ends_on`) VALUES (:id, :starts, :ends)')
-            ->execute(['id' => $id, 'starts' => $period->startsOn, 'ends' => $period->endsOn]);
+            ->execute(['id' => $id, 'starts' => $span->startsOn, 'ends' => $span->endsOn]);
     }
 }

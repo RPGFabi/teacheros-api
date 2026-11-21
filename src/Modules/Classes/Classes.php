@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TeacherOS\Modules\Classes;
 
+use TeacherOS\Modules\SchoolYears\SchoolYear;
+use TeacherOS\Modules\SchoolYears\SchoolYearRef;
 use TeacherOS\Modules\SchoolYears\SchoolYears;
 use TeacherOS\Shared\Audit\Actor;
 use TeacherOS\Shared\Audit\AuditLog;
@@ -32,7 +34,7 @@ final class Classes
     /**
      * Alle Schuljahre mit Status fuer die Auswahl, nach Beginn. Wer Klassen sieht, braucht dafuer kein `school_years.view`.
      *
-     * @return list<array{id:string,name:string,starts_on:string,ends_on:string,status:string}>
+     * @return list<SchoolYear>
      */
     public function schoolYears(): array
     {
@@ -43,7 +45,7 @@ final class Classes
      * Die Klassen eines Schuljahres: nach Klassenstufe, dann natuerlich nach Bezeichnung (7a, 7b, ..., 10a).
      * Archivierte Klassen nur mit $includeArchived.
      *
-     * @return list<array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}>
+     * @return list<SchoolClass>
      * @throws CodedException `school_year_not_found` (404)
      */
     public function listIn(string $schoolYearId, bool $includeArchived = false): array
@@ -51,14 +53,14 @@ final class Classes
         $year = $this->schoolYear($schoolYearId);
         $rows = $this->repository->inSchoolYear($schoolYearId, $includeArchived);
         usort($rows, static fn (array $a, array $b): int => ($a['grade_level'] <=> $b['grade_level']) ?: strnatcasecmp($a['name'], $b['name']));
-        return array_map(static fn (array $r): array => self::present($r, $year), $rows);
+        return array_map(static fn (array $r): SchoolClass => self::present($r, $year), $rows);
     }
 
     /**
      * Die fuer neue Zuordnungen waehlbaren Klassen, also ohne archivierte: eines Schuljahres oder aller Schuljahre
      * (dann nach Beginn des Schuljahres, innerhalb davon wie {@see self::listIn()}). Spaetere Module fragen hier ab.
      *
-     * @return list<array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}>
+     * @return list<SchoolClass>
      * @throws CodedException `school_year_not_found` (404)
      */
     public function selectable(?string $schoolYearId = null): array
@@ -68,7 +70,7 @@ final class Classes
         }
         $classes = [];
         foreach ($this->schoolYears->list() as $year) {
-            array_push($classes, ...$this->listIn($year['id']));
+            array_push($classes, ...$this->listIn($year->id));
         }
         return $classes;
     }
@@ -78,10 +80,10 @@ final class Classes
      * sichert der eindeutige Schluessel der Tabelle; Anlegen und Audit-Eintrag `class.created` laufen in einer Transaktion.
      * Wird das Schuljahr zwischen Pruefung und Insert geloescht, meldet der Fremdschluessel es als nicht gefunden.
      *
-     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @return SchoolClass
      * @throws CodedException `school_year_not_found` (404), `class_name_taken` (409)
      */
-    public function create(Actor $actor, ClassInput $input): array
+    public function create(Actor $actor, ClassInput $input): SchoolClass
     {
         $year = $this->schoolYear($input->schoolYearId);
         $id = Uuid::v4();
@@ -98,10 +100,10 @@ final class Classes
      * (409) gehen der Eingabepruefung (400) vor. Das Schuljahr ist nicht aenderbar: ein abweichendes
      * `$claimedSchoolYearId` wird abgelehnt. Eine archivierte Klasse ist schreibgeschuetzt.
      *
-     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @return SchoolClass
      * @throws CodedException `class_not_found` (404), `class_archived` (409), `class_name_taken` (409), `invalid_request` (400)
      */
-    public function update(Actor $actor, string $id, mixed $gradeLevel, mixed $name, mixed $claimedSchoolYearId = null): array
+    public function update(Actor $actor, string $id, mixed $gradeLevel, mixed $name, mixed $claimedSchoolYearId = null): SchoolClass
     {
         $before = $change = null;
         $this->inTransaction(function () use ($id, $gradeLevel, $name, $actor, $claimedSchoolYearId, &$before, &$change): void {
@@ -123,10 +125,10 @@ final class Classes
      * Archiviert eine Klasse: sie bleibt lesbar, ihre Bezeichnung belegt, aber sie ist schreibgeschuetzt und nicht waehlbar.
      * Geht mit und ohne Verknuepfungen.
      *
-     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @return SchoolClass
      * @throws CodedException `class_not_found` (404), `class_already_archived` (409)
      */
-    public function archive(Actor $actor, string $id): array
+    public function archive(Actor $actor, string $id): SchoolClass
     {
         return $this->setArchived($actor, $id, true);
     }
@@ -135,10 +137,10 @@ final class Classes
      * Stellt eine archivierte Klasse wieder her. Ihre Bezeichnung war die ganze Zeit belegt, eine erneute
      * Eindeutigkeitspruefung ist daher nicht noetig.
      *
-     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @return SchoolClass
      * @throws CodedException `class_not_found` (404), `class_not_archived` (409)
      */
-    public function restore(Actor $actor, string $id): array
+    public function restore(Actor $actor, string $id): SchoolClass
     {
         return $this->setArchived($actor, $id, false);
     }
@@ -160,9 +162,9 @@ final class Classes
     }
 
     /**
-     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @return SchoolClass
      */
-    private function setArchived(Actor $actor, string $id, bool $archived): array
+    private function setArchived(Actor $actor, string $id, bool $archived): SchoolClass
     {
         $class = null;
         $this->inTransaction(function () use ($id, $archived, $actor, &$class): void {
@@ -213,22 +215,19 @@ final class Classes
     }
 
     /**
-     * @return array{id:string,name:string}
      * @throws CodedException `school_year_not_found` (404)
      */
-    private function schoolYear(string $schoolYearId): array
+    private function schoolYear(string $schoolYearId): SchoolYearRef
     {
-        $year = $this->schoolYears->get($schoolYearId);
-        return ['id' => $year['id'], 'name' => $year['name']];
+        return $this->schoolYears->get($schoolYearId)->ref();
     }
 
     /**
      * @param array{id:string,grade_level:int,name:string,archived:bool} $row
-     * @param array{id:string,name:string} $year
-     * @return array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}
+     * @param SchoolYearRef $year
      */
-    private static function present(array $row, array $year): array
+    private static function present(array $row, SchoolYearRef $year): SchoolClass
     {
-        return ['id' => $row['id'], 'grade_level' => $row['grade_level'], 'name' => $row['name'], 'archived' => $row['archived'], 'school_year' => $year];
+        return new SchoolClass($row['id'], $row['grade_level'], $row['name'], $row['archived'], $year);
     }
 }

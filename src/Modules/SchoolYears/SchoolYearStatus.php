@@ -20,21 +20,21 @@ enum SchoolYearStatus: string
      * laufend, das erste ist dann kommend; nach dem letzten ist alles vergangen. Hoechstens eines ist laufend, weil sich
      * Schuljahre nie ueberschneiden.
      *
-     * @param list<array{0:string,1:string}> $periods Zeitraeume als [Beginn, Ende] (`JJJJ-MM-TT`), aufsteigend nach Beginn
+     * @param list<array{0:string,1:string}> $spans Zeitraeume als [Beginn, Ende] (`JJJJ-MM-TT`), aufsteigend nach Beginn
      * @return list<self> in der Reihenfolge der Zeitraeume
      */
-    public static function derive(array $periods, \DateTimeImmutable $today): array
+    public static function derive(array $spans, \DateTimeImmutable $today): array
     {
         $day = $today->format('Y-m-d');
         $nextUpcoming = null;
-        foreach ($periods as $i => [$start]) {
-            if ($start > $day && ($nextUpcoming === null || $start < $periods[$nextUpcoming][0])) {
+        foreach ($spans as $i => [$start]) {
+            if ($start > $day && ($nextUpcoming === null || $start < $spans[$nextUpcoming][0])) {
                 $nextUpcoming = $i;
             }
         }
         $containsToday = false;
         $anyEnded = false;
-        foreach ($periods as [$start, $end]) {
+        foreach ($spans as [$start, $end]) {
             $containsToday = $containsToday || ($start <= $day && $day <= $end);
             $anyEnded = $anyEnded || $end < $day;
         }
@@ -42,7 +42,7 @@ enum SchoolYearStatus: string
         $inGap = !$containsToday && $anyEnded;
 
         $statuses = [];
-        foreach ($periods as $i => [$start, $end]) {
+        foreach ($spans as $i => [$start, $end]) {
             $statuses[] = match (true) {
                 $start <= $day && $day <= $end => self::Running,
                 $end < $day => self::Past,

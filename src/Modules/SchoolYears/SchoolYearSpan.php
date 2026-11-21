@@ -11,7 +11,7 @@ use TeacherOS\Shared\Exceptions\CodedException;
  * Das Ende liegt im Kalenderjahr nach dem Beginn. Die Bezeichnung ergibt sich allein aus dem Zeitraum und wird nie
  * eingegeben: Jahr des Beginns, Schraegstrich, letzte zwei Ziffern des Endjahres ("2026/27").
  */
-final class SchoolYearPeriod
+final class SchoolYearSpan
 {
     private function __construct(
         public readonly string $startsOn,
