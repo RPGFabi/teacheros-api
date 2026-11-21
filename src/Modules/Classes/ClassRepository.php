@@ -41,7 +41,7 @@ final class ClassRepository
     {
         DB::getInstance()
             ->prepare('INSERT INTO `classes` (`id`, `school_year_id`, `grade_level`, `name`, `name_key`) VALUES (:id, :year, :grade, :name, :key)')
-            ->execute(['id' => $id, 'year' => $input->schoolYearId, 'grade' => $input->change->gradeLevel, 'name' => $input->change->name, 'key' => $input->change->nameKey()]);
+            ->execute(['id' => $id, 'year' => $input->schoolYearId, 'grade' => $input->attributes->gradeLevel, 'name' => $input->attributes->name, 'key' => $input->attributes->nameKey()]);
     }
 
     /**
@@ -49,11 +49,11 @@ final class ClassRepository
      *
      * @throws \PDOException bei doppelter Bezeichnung im Schuljahr (Fehler 1062)
      */
-    public function update(string $id, ClassChange $change): void
+    public function update(string $id, ClassAttributes $attributes): void
     {
         DB::getInstance()
             ->prepare('UPDATE `classes` SET `grade_level` = :grade, `name` = :name, `name_key` = :key WHERE `id` = :id')
-            ->execute(['id' => $id, 'grade' => $change->gradeLevel, 'name' => $change->name, 'key' => $change->nameKey()]);
+            ->execute(['id' => $id, 'grade' => $attributes->gradeLevel, 'name' => $attributes->name, 'key' => $attributes->nameKey()]);
     }
 
     public function setArchived(string $id, bool $archived): void

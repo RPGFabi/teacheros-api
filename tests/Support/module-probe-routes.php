@@ -27,6 +27,8 @@ use TeacherOS\Modules\Subjects\SubjectLinkGuard;
 use TeacherOS\Modules\Subjects\SubjectLinkGuards;
 use TeacherOS\Modules\Subjects\SubjectRoutes;
 use TeacherOS\Modules\Subjects\SubjectsModule;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupRoutes;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupsModule;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 use TeacherOS\Shared\Modules\ModuleCatalog;
 use TeacherOS\Shared\Modules\ModuleGate;
@@ -110,6 +112,7 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
     SchoolYearRoutes::register($router, (new SchoolYearsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-school-years');
     ClassRoutes::register($router, (new ClassesModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-classes');
     SubjectRoutes::register($router, (new SubjectsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-subjects');
+    TeachingGroupRoutes::register($router, (new TeachingGroupsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-teaching-groups');
 
     // Stellvertretend fuer ein spaeteres Zuordnungs-Modul (#67, #68): liest die Obergrenzen der Schuleinstellungen
     // ausschliesslich ueber den Dienst SchoolLimits, ohne deren Speicherung zu kennen.

@@ -6,7 +6,7 @@ namespace TeacherOS\Tests\Classes;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use TeacherOS\Modules\Classes\ClassChange;
+use TeacherOS\Modules\Classes\ClassAttributes;
 use TeacherOS\Shared\Exceptions\CodedException;
 
 /**
@@ -14,7 +14,7 @@ use TeacherOS\Shared\Exceptions\CodedException;
  * und andere Leerzeichen, Zeilenumbrueche, unsichtbare Zeichen am Rand) und, wenn ext-intl da ist, in NFC normalisiert,
  * bevor sie gespeichert und verglichen wird.
  */
-final class ClassChangeTest extends TestCase
+final class ClassAttributesTest extends TestCase
 {
     /** @return iterable<string,array{string,string}> */
     public static function getrimmteBezeichnungen(): iterable
@@ -33,7 +33,7 @@ final class ClassChangeTest extends TestCase
     #[DataProvider('getrimmteBezeichnungen')]
     public function testBezeichnungWirdUnicodeBewusstGetrimmt(string $input, string $expected): void
     {
-        $this->assertSame($expected, ClassChange::fromInput(7, $input)->name);
+        $this->assertSame($expected, ClassAttributes::fromInput(7, $input)->name);
     }
 
     /** @return iterable<string,array{mixed}> */
@@ -54,7 +54,7 @@ final class ClassChangeTest extends TestCase
     public function testBezeichnungNurAusLeerraumIstUngueltig(mixed $input): void
     {
         try {
-            ClassChange::fromInput(7, $input);
+            ClassAttributes::fromInput(7, $input);
             $this->fail('invalid_request erwartet');
         } catch (CodedException $e) {
             $this->assertSame('invalid_request', $e->errorCode);
@@ -64,9 +64,9 @@ final class ClassChangeTest extends TestCase
 
     public function testLaengeZaehltNachDemTrimmen(): void
     {
-        $this->assertSame(20, mb_strlen(ClassChange::fromInput(7, "\u{00A0}" . str_repeat('ä', 20) . "\u{00A0}")->name));
+        $this->assertSame(20, mb_strlen(ClassAttributes::fromInput(7, "\u{00A0}" . str_repeat('ä', 20) . "\u{00A0}")->name));
         $this->expectException(CodedException::class);
-        ClassChange::fromInput(7, "\u{00A0}" . str_repeat('ä', 21));
+        ClassAttributes::fromInput(7, "\u{00A0}" . str_repeat('ä', 21));
     }
 
     public function testBezeichnungWirdNachNfcNormalisiert(): void
@@ -74,8 +74,8 @@ final class ClassChangeTest extends TestCase
         if (!class_exists(\Normalizer::class)) {
             $this->markTestSkipped('ext-intl fehlt: ohne sie wird nicht normalisiert (docs/workspace.md).');
         }
-        $composed = ClassChange::fromInput(7, "7\u{00E4}");
-        $decomposed = ClassChange::fromInput(7, "7a\u{0308}");
+        $composed = ClassAttributes::fromInput(7, "7\u{00E4}");
+        $decomposed = ClassAttributes::fromInput(7, "7a\u{0308}");
 
         $this->assertSame("7\u{00E4}", $decomposed->name, 'gespeichert wird die NFC-Form');
         $this->assertSame($composed->name, $decomposed->name);
@@ -84,8 +84,8 @@ final class ClassChangeTest extends TestCase
 
     public function testNameKeyIgnoriertGrossUndKleinschreibungNichtAberAkzente(): void
     {
-        $this->assertSame(ClassChange::fromInput(7, '7A')->nameKey(), ClassChange::fromInput(7, '7a')->nameKey());
-        $this->assertNotSame(ClassChange::fromInput(7, '7ä')->nameKey(), ClassChange::fromInput(7, '7a')->nameKey());
+        $this->assertSame(ClassAttributes::fromInput(7, '7A')->nameKey(), ClassAttributes::fromInput(7, '7a')->nameKey());
+        $this->assertNotSame(ClassAttributes::fromInput(7, '7ä')->nameKey(), ClassAttributes::fromInput(7, '7a')->nameKey());
     }
 
     public function testLaengeZaehltNachNormalisierung(): void
@@ -94,6 +94,6 @@ final class ClassChangeTest extends TestCase
             $this->markTestSkipped('ext-intl fehlt');
         }
         $decomposed = str_repeat("a\u{0308}", 20); // 40 Codepunkte, nach NFC 20 Zeichen
-        $this->assertSame(20, mb_strlen(ClassChange::fromInput(7, $decomposed)->name));
+        $this->assertSame(20, mb_strlen(ClassAttributes::fromInput(7, $decomposed)->name));
     }
 }
