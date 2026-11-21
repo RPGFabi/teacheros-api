@@ -11,7 +11,7 @@ use TeacherOS\Shared\Security\PermissionCatalog;
 use TeacherOS\Shared\Security\RequirePermission;
 
 /**
- * Routen der Faecher (Ticket #62): Anmeldung, Modulpruefung (`core`), dann das Recht, in dieser Reihenfolge
+ * Routen der Faecher (Tickets #62, #63): Anmeldung, Modulpruefung (`core`), dann das Recht, in dieser Reihenfolge
  * ({@see ModuleGate::route()}). Modul und Pfad sind nur fuer Tests austauschbar (tests/Support/module-probe-routes.php).
  * Nur GET/POST, weil der CORS-Standard nur diese zulaesst.
  */
@@ -24,5 +24,9 @@ final class SubjectRoutes
         $router->get($path . '/selectable', [$controller, 'selectable'], $view);
         $manage = ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::SUBJECTS_MANAGE)]);
         $router->post($path, [$controller, 'create'], $manage);
+        $router->post($path . '/:id/update', [$controller, 'update'], $manage);
+        $router->post($path . '/:id/archive', [$controller, 'archive'], $manage);
+        $router->post($path . '/:id/restore', [$controller, 'restore'], $manage);
+        $router->post($path . '/:id/delete', [$controller, 'delete'], $manage);
     }
 }
