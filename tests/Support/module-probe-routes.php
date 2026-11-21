@@ -27,6 +27,9 @@ use TeacherOS\Modules\Subjects\SubjectLinkGuard;
 use TeacherOS\Modules\Subjects\SubjectLinkGuards;
 use TeacherOS\Modules\Subjects\SubjectRoutes;
 use TeacherOS\Modules\Subjects\SubjectsModule;
+use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentRoutes;
+use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentsModule;
+
 use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalGuard;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalGuards;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalObjection;
@@ -34,6 +37,7 @@ use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuard;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuards;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupRoutes;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupsModule;
+use TeacherOS\Shared\Clock\FixedClock;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 use TeacherOS\Shared\Modules\ModuleCatalog;
 use TeacherOS\Shared\Modules\ModuleGate;
@@ -151,6 +155,17 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
     ClassRoutes::register($router, (new ClassesModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-classes');
     SubjectRoutes::register($router, (new SubjectsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-subjects');
     TeachingGroupRoutes::register($router, (new TeachingGroupsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-teaching-groups');
+
+    // Lehrkraft-Zuordnung (Ticket #67): unter `observe` (Modulpruefung vor den Rechten) und, unter `core`, mit einer Uhr, deren
+    // heutiger Tag der Test je Request in TEST_TODAY mitgibt ("Test mit festem Datum"; ohne Angabe die echte Uhr).
+    TeacherAssignmentRoutes::register($router, (new TeacherAssignmentsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-teacher-assignments');
+    $today = $_SERVER['TEST_TODAY'] ?? getenv('TEST_TODAY');
+    TeacherAssignmentRoutes::register(
+        $router,
+        (new TeacherAssignmentsModule())->controller($points, is_string($today) && $today !== '' ? new FixedClock($today) : new \TeacherOS\Shared\Clock\SystemClock()),
+        ModuleCatalog::CORE,
+        '/api/test/dated-teacher-assignments',
+    );
 
     // Stellvertretend fuer ein spaeteres Zuordnungs-Modul (#67, #68): liest die Obergrenzen der Schuleinstellungen
     // ausschliesslich ueber den Dienst SchoolLimits, ohne deren Speicherung zu kennen.

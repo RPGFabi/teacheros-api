@@ -227,6 +227,8 @@ final class HttpTestApp
     /** Entfernt alle Fachgruppen samt ihrer Klassen (Testaufbau). */
     public function resetTeachingGroups(): void
     {
+        $this->pdo()->exec('DELETE FROM `teacher_assignments`');
+
         $this->pdo()->exec('DELETE FROM `test_teaching_group_links`');
         $this->pdo()->exec('DELETE FROM `test_teaching_group_class_blocks`');
         $this->pdo()->exec('DELETE FROM `teaching_group_classes`');

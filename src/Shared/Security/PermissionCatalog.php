@@ -31,6 +31,7 @@ final class PermissionCatalog
     public const SCHOOL_SETTINGS_MANAGE = 'school_settings.manage';
     public const TEACHING_GROUPS_VIEW = 'teaching_groups.view';
     public const TEACHING_GROUPS_MANAGE = 'teaching_groups.manage';
+    public const TEACHER_ASSIGNMENTS_MANAGE = 'teacher_assignments.manage';
 
     /**
      * Die drei Verwaltungsrechte (ADR 0002 B4). Wer eines hat, darf Rollen, Rechte-Katalog und
@@ -80,6 +81,7 @@ final class PermissionCatalog
             ['key' => self::SCHOOL_SETTINGS_MANAGE, 'name' => 'Schuleinstellungen verwalten', 'group' => self::GROUP_MASTER_DATA],
             ['key' => self::TEACHING_GROUPS_VIEW, 'name' => 'Fachgruppen ansehen', 'group' => self::GROUP_MASTER_DATA],
             ['key' => self::TEACHING_GROUPS_MANAGE, 'name' => 'Fachgruppen verwalten', 'group' => self::GROUP_MASTER_DATA],
+            ['key' => self::TEACHER_ASSIGNMENTS_MANAGE, 'name' => 'Lehrkraft-Zuordnungen verwalten', 'group' => self::GROUP_MASTER_DATA],
         ];
     }
 
