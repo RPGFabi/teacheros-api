@@ -1,0 +1,14 @@
+# Apache: alle Anfragen an index.php (Router der API), auch die CORS-Preflights (OPTIONS),
+# damit die API die CORS-Header selbst setzt. Vorbild: jwt-auth-service.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Preflight-Requests direkt an index.php weiterleiten
+  RewriteCond %{REQUEST_METHOD} OPTIONS
+  RewriteRule ^ index.php [QSA,L]
+
+  # Alles ohne eigene Datei an index.php
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
