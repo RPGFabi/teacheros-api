@@ -23,7 +23,7 @@ final class SchoolSettingsEndpointsTest extends TestCase
     private const OTHER_RIGHTS = '66666666-0000-4666-8666-000000000004';
     private const URI = '/api/school-settings';
     private const UPDATE = '/api/school-settings/update';
-    private const TEACHERS = 'max_teachers_per_subject_group';
+    private const TEACHERS = 'max_teachers_per_teaching_group';
     private const LEADERS = 'max_class_leaders_per_class';
 
     private HttpTestApp $app;
@@ -211,7 +211,7 @@ final class SchoolSettingsEndpointsTest extends TestCase
         $r = $this->app->request('GET', '/api/test/school-limits', $this->headers(self::ADMIN));
 
         $this->assertSame(200, $r['status'], $r['body']);
-        $this->assertSame(['max_teachers_per_subject_group' => 2, 'max_class_leaders_per_class' => 2], $r['json']);
+        $this->assertSame(['max_teachers_per_teaching_group' => 2, 'max_class_leaders_per_class' => 2], $r['json']);
     }
 
     public function testDienstLiefertDieGeaendertenWerte(): void
@@ -220,7 +220,7 @@ final class SchoolSettingsEndpointsTest extends TestCase
 
         $r = $this->app->request('GET', '/api/test/school-limits', $this->headers(self::ADMIN));
 
-        $this->assertSame(['max_teachers_per_subject_group' => 7, 'max_class_leaders_per_class' => 3], $r['json']);
+        $this->assertSame(['max_teachers_per_teaching_group' => 7, 'max_class_leaders_per_class' => 3], $r['json']);
     }
 
     // --- Trennung von der Modulfreigabe ---

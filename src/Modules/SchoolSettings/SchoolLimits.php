@@ -17,9 +17,9 @@ final class SchoolLimits
     }
 
     /** Wie viele Lehrkraefte eine Fachgruppe hoechstens zugleich hat. */
-    public function maxTeachersPerSubjectGroup(): int
+    public function maxTeachersPerTeachingGroup(): int
     {
-        return $this->value(SchoolSettingKey::MaxTeachersPerSubjectGroup);
+        return $this->value(SchoolSettingKey::MaxTeachersPerTeachingGroup);
     }
 
     /** Wie viele Klassenleitungen eine Klasse hoechstens zugleich hat. */

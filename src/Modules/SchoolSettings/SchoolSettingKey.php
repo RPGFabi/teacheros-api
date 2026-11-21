@@ -12,7 +12,7 @@ namespace TeacherOS\Modules\SchoolSettings;
 enum SchoolSettingKey: string
 {
     /** Wie viele Lehrkraefte eine Fachgruppe hoechstens zugleich hat. */
-    case MaxTeachersPerSubjectGroup = 'max_teachers_per_subject_group';
+    case MaxTeachersPerTeachingGroup = 'max_teachers_per_teaching_group';
     /** Wie viele Klassenleitungen eine Klasse hoechstens zugleich hat. */
     case MaxClassLeadersPerClass = 'max_class_leaders_per_class';
 
@@ -29,7 +29,7 @@ enum SchoolSettingKey: string
     public function max(): int
     {
         return match ($this) {
-            self::MaxTeachersPerSubjectGroup => 50,
+            self::MaxTeachersPerTeachingGroup => 50,
             self::MaxClassLeadersPerClass => 10,
         };
     }
@@ -37,7 +37,7 @@ enum SchoolSettingKey: string
     public function label(): string
     {
         return match ($this) {
-            self::MaxTeachersPerSubjectGroup => 'Lehrkräfte je Fachgruppe',
+            self::MaxTeachersPerTeachingGroup => 'Lehrkräfte je Fachgruppe',
             self::MaxClassLeadersPerClass => 'Klassenleitungen je Klasse',
         };
     }

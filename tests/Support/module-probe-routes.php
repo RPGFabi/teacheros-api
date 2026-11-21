@@ -93,7 +93,7 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
         static function (Request $request, Response $response): void {
             $limits = new SchoolLimits();
             $response->json([
-                'max_teachers_per_subject_group' => $limits->maxTeachersPerSubjectGroup(),
+                'max_teachers_per_teaching_group' => $limits->maxTeachersPerTeachingGroup(),
                 'max_class_leaders_per_class' => $limits->maxClassLeadersPerClass(),
             ]);
         },
