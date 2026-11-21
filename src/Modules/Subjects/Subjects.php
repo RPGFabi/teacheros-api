@@ -54,6 +54,16 @@ final class Subjects
     }
 
     /**
+     * Das waehlbare Fach, fuer die Dauer der laufenden Transaktion gesperrt: wer darauf hin etwas speichert (Fachgruppe anlegen),
+     * muss in einer Transaktion fragen, damit ein gleichzeitiges Archivieren nicht zwischen Pruefung und Schreiben kommt.
+     * Archiviert oder unbekannt ist null.
+     */
+    public function lockSelectable(string $id): ?Subject
+    {
+        return $this->repository->findSelectableShared($id);
+    }
+
+    /**
      * Legt ein Fach an. Die Eindeutigkeit des Kuerzels sichert der eindeutige Schluessel der Tabelle (auch bei gleichzeitigen
      * Anfragen); Anlegen und Audit-Eintrag `subject.created` laufen in einer Transaktion.
      *

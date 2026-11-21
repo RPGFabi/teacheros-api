@@ -30,6 +30,19 @@ final class SubjectRepository
         return $row === false ? null : self::subject($row);
     }
 
+    /**
+     * Ein waehlbares, also nicht archiviertes Fach, fuer die Dauer der laufenden Transaktion gegen Aenderungen gesperrt
+     * (gemeinsame Sperre): ein gleichzeitiges Archivieren oder Loeschen wartet, bis die Transaktion endet, und eines, das
+     * schon laeuft, ist vorher durch. Gelesen wird der aktuelle Stand.
+     */
+    public function findSelectableShared(string $id): ?Subject
+    {
+        $stmt = DB::getInstance()->prepare('SELECT `id`, `code`, `name`, `archived_at` FROM `subjects` WHERE `id` = :id AND `archived_at` IS NULL LOCK IN SHARE MODE');
+        $stmt->execute(['id' => $id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row === false ? null : self::subject($row);
+    }
+
     /** @throws \PDOException bei doppeltem Kuerzel (Fehler 1062) */
     public function insert(string $id, SubjectInput $input): void
     {

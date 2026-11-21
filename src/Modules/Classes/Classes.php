@@ -76,6 +76,24 @@ final class Classes
     }
 
     /**
+     * Die waehlbaren Klassen des Schuljahres unter den genannten Kennungen, fuer die Dauer der laufenden Transaktion gesperrt
+     * (sortiert wie {@see self::listIn()}): wer darauf hin etwas speichert (Fachgruppe anlegen oder bearbeiten), muss in einer
+     * Transaktion fragen, damit ein gleichzeitiges Archivieren nicht zwischen Pruefung und Schreiben kommt. Eine archivierte,
+     * unbekannte oder zu einem anderen Schuljahr gehoerende Klasse fehlt in der Antwort.
+     *
+     * @param list<string> $classIds
+     * @return list<SchoolClass>
+     * @throws CodedException `school_year_not_found` (404)
+     */
+    public function lockSelectable(string $schoolYearId, array $classIds): array
+    {
+        $year = $this->schoolYear($schoolYearId);
+        $rows = $this->repository->selectableShared($schoolYearId, $classIds);
+        usort($rows, static fn (array $a, array $b): int => ($a['grade_level'] <=> $b['grade_level']) ?: strnatcasecmp($a['name'], $b['name']));
+        return array_map(static fn (array $r): SchoolClass => self::present($r, $year), $rows);
+    }
+
+    /**
      * Legt eine Klasse in einem beliebigen Schuljahr an (laufend, kommend oder vergangen). Die Eindeutigkeit der Bezeichnung
      * sichert der eindeutige Schluessel der Tabelle; Anlegen und Audit-Eintrag `class.created` laufen in einer Transaktion.
      * Wird das Schuljahr zwischen Pruefung und Insert geloescht, meldet der Fremdschluessel es als nicht gefunden.

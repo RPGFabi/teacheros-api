@@ -402,6 +402,43 @@ final class TeachingGroupsEndpointsTest extends TestCase
         $this->assertSame('teaching_group_name_taken', $this->createGroup('KURS ü')['json']['code']);
     }
 
+    /** Hielte der Test das Archivieren unbestaetigt, haengt das Anlegen an der Sperre (nicht erst am Fremdschluessel); danach ist das Objekt archiviert. */
+    private function createWhileArchiving(string $table, string $id, string $lockedSelect): array
+    {
+        $pdo = $this->app->pdo();
+        $pdo->beginTransaction();
+        $pdo->prepare("UPDATE `$table` SET `archived_at` = CURRENT_TIMESTAMP(6) WHERE `id` = ?")->execute([$id]);
+
+        return $this->app->requestReleasedWhenBlocked(
+            $lockedSelect,
+            static fn () => $pdo->commit(),
+            'POST',
+            self::URI,
+            $this->headers(self::ADMIN),
+            ['school_year_id' => $this->year, 'subject_id' => $this->subject, 'name' => 'Ma 7', 'class_ids' => [$this->class7a]],
+        );
+    }
+
+    public function testEinWaehrendDesAnlegensArchiviertesFachMachtKeineFachgruppeMitArchiviertemFach(): void
+    {
+        $r = $this->createWhileArchiving('subjects', $this->subject, 'SELECT `id`, `code`, `name`, `archived_at` FROM `subjects` WHERE `id` = %LOCK IN SHARE MODE');
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('subject_not_selectable', $r['json']['code']);
+        $this->assertSame([], $this->app->teachingGroups());
+        $this->assertNotContains('teaching_group.created', array_column($this->app->auditLog(), 'action'));
+    }
+
+    public function testEineWaehrendDesAnlegensArchivierteKlasseMachtKeineFachgruppeMitArchivierterKlasse(): void
+    {
+        $r = $this->createWhileArchiving('classes', $this->class7a, 'SELECT `id`, `school_year_id`, `grade_level`, `name`, `archived_at` FROM `classes` WHERE %LOCK IN SHARE MODE');
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('class_not_selectable', $r['json']['code']);
+        $this->assertSame([], $this->app->teachingGroups());
+        $this->assertSame([], $this->app->teachingGroupClasses());
+    }
+
     public function testZweiGleichzeitigeAnfragenMitGleicherBezeichnungLegenNurEineFachgruppeAn(): void
     {
         $call = ['POST', self::URI, $this->headers(self::ADMIN), ['school_year_id' => $this->year, 'subject_id' => $this->subject, 'name' => 'AES 1', 'class_ids' => [$this->class7a, $this->class7b]]];

@@ -36,6 +36,26 @@ final class ClassRepository
         return $row === false ? null : self::row($row);
     }
 
+    /**
+     * Die waehlbaren, also nicht archivierten Klassen des Schuljahres unter den genannten Kennungen, fuer die Dauer der
+     * laufenden Transaktion gegen Aenderungen gesperrt (gemeinsame Sperre, aktueller Stand, in Kennungs-Reihenfolge).
+     *
+     * @param list<string> $ids
+     * @return list<array{id:string,school_year_id:string,grade_level:int,name:string,archived:bool}>
+     */
+    public function selectableShared(string $schoolYearId, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $stmt = DB::getInstance()->prepare(
+            'SELECT `id`, `school_year_id`, `grade_level`, `name`, `archived_at` FROM `classes` WHERE `school_year_id` = ? AND `archived_at` IS NULL AND `id` IN ('
+            . implode(', ', array_fill(0, count($ids), '?')) . ') ORDER BY `id` LOCK IN SHARE MODE'
+        );
+        $stmt->execute([$schoolYearId, ...$ids]);
+        return array_map(self::row(...), $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }
+
     /** @throws \PDOException bei doppelter Bezeichnung im Schuljahr (Fehler 1062) */
     public function insert(string $id, ClassInput $input): void
     {
