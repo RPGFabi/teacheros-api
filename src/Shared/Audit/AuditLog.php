@@ -70,6 +70,9 @@ final class AuditLog
     /** Eine unverknuepfte Klasse wurde endgueltig geloescht (Ticket #57); Objekt: Kennung, Kontext: name. */
     public const CLASS_DELETED = 'class.deleted';
 
+    /** Ein Fach wurde angelegt (Ticket #62); Objekt: Kennung des Faches, Kontext: code (Kuerzel), name (Bezeichnung). */
+    public const SUBJECT_CREATED = 'subject.created';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {

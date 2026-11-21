@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TeacherOS\Modules\Classes;
 
 use TeacherOS\Shared\Exceptions\CodedException;
+use TeacherOS\Shared\Text\Text;
 
 /**
  * Die pruefbaren Eigenschaften einer Klasse (GLOSSARY.md: Klasse, Klassenstufe): Klassenstufe als ganze Zahl von 1 bis 13
@@ -32,7 +33,7 @@ final class ClassChange
         if (!is_int($gradeLevel) || $gradeLevel < self::MIN_GRADE_LEVEL || $gradeLevel > self::MAX_GRADE_LEVEL) {
             throw new CodedException('invalid_request', 400, 'Bitte die Klassenstufe als ganze Zahl von ' . self::MIN_GRADE_LEVEL . ' bis ' . self::MAX_GRADE_LEVEL . ' angeben.');
         }
-        $trimmed = is_string($name) ? self::normalized(self::trimmed($name)) : '';
+        $trimmed = is_string($name) ? Text::clean($name) : '';
         $length = mb_strlen($trimmed);
         if ($length < 1 || $length > self::MAX_NAME_LENGTH) {
             throw new CodedException('invalid_request', 400, 'Bitte eine Bezeichnung mit 1 bis ' . self::MAX_NAME_LENGTH . ' Zeichen angeben.');
@@ -43,18 +44,6 @@ final class ClassChange
     /** Schluessel der Eindeutigkeit je Schuljahr: die Bezeichnung ohne Ruecksicht auf Gross-/Kleinschreibung. */
     public function nameKey(): string
     {
-        return self::normalized(mb_strtolower($this->name));
-    }
-
-    /** Ohne Leerraum am Rand: Leerzeichen jeder Art (\p{Z}), Steuer- und Formatzeichen (\p{Cc}, \p{Cf}:Tabulator, Zeilenumbruch, Zero-Width-Space, BOM). Ungueltiges UTF-8 ergibt "". */
-    private static function trimmed(string $name): string
-    {
-        return mb_check_encoding($name, 'UTF-8') ? (string) preg_replace('/^[\p{Z}\p{Cc}\p{Cf}]+|[\p{Z}\p{Cc}\p{Cf}]+$/u', '', $name) : '';
-    }
-
-    /** NFC, sofern ext-intl vorhanden ist; sonst unveraendert. */
-    private static function normalized(string $text): string
-    {
-        return class_exists(\Normalizer::class) ? (\Normalizer::normalize($text, \Normalizer::FORM_C) ?: $text) : $text;
+        return Text::normalized(mb_strtolower($this->name));
     }
 }

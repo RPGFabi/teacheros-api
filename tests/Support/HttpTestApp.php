@@ -192,6 +192,18 @@ final class HttpTestApp
         return $this->pdo()->query('SELECT * FROM `classes` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    /** Entfernt alle Faecher (Testaufbau). */
+    public function resetSubjects(): void
+    {
+        $this->pdo()->exec('DELETE FROM `subjects`');
+    }
+
+    /** @return list<array<string,mixed>> nach Anlegezeitpunkt */
+    public function subjects(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `subjects` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     /** Entfernt alle Schuljahre samt ihrer Klassen und Sperren (Testaufbau). */
     public function resetSchoolYears(): void
     {
