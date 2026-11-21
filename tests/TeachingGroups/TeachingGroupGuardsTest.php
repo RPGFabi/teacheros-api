@@ -74,6 +74,38 @@ final class TeachingGroupGuardsTest extends TestCase
         $this->assertSame('class_linked', $this->post('/api/classes/' . $this->class7a . '/delete')['json']['code']);
     }
 
+    public function testEinFachMitFachgruppeWirdNichtGeloeschtUndAufArchivierenVerwiesen(): void
+    {
+        $r = $this->post('/api/subjects/' . $this->subject . '/delete');
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('subject_linked', $r['json']['code']);
+        $this->assertStringContainsString('Fachgruppen', $r['json']['error']);
+        $this->assertCount(1, $this->app->subjects());
+    }
+
+    public function testEinFachOhneFachgruppeLaesstSichLoeschen(): void
+    {
+        $other = $this->post('/api/subjects', ['code' => 'En', 'name' => 'Englisch'])['json']['subject']['id'];
+
+        $this->assertSame(200, $this->post('/api/subjects/' . $other . '/delete')['status']);
+    }
+
+    public function testEinFachMitFachgruppeLaesstSichArchivierenUndDieFachgruppeZeigtEsWeiter(): void
+    {
+        $this->assertSame(200, $this->post('/api/subjects/' . $this->subject . '/archive')['status']);
+
+        $headers = ['HTTP_AUTHORIZATION' => 'Bearer ' . TestTokens::access(self::ADMIN)];
+        $group = $this->app->request('GET', '/api/teaching-groups/' . $this->group, $headers)['json']['teaching_group'];
+        $this->assertSame('Ma', $group['subject']['code']);
+        $this->assertTrue($group['subject']['archived']);
+        $this->assertSame('subject_linked', $this->post('/api/subjects/' . $this->subject . '/delete')['json']['code']);
+        $list = $this->app->request('GET', '/api/teaching-groups?school_year_id=' . $this->year, $headers)['json']['teaching_groups'];
+        $this->assertSame([$this->group], array_column($list, 'id'));
+        $choices = $this->app->request('GET', '/api/teaching-groups/choices?school_year_id=' . $this->year, $headers)['json'];
+        $this->assertSame([], $choices['subjects'], 'ein archiviertes Fach ist fuer neue Fachgruppen nicht waehlbar');
+    }
+
     public function testEinSchuljahrMitFachgruppenWirdNichtGeloescht(): void
     {
         $r = $this->post('/api/school-years/' . $this->year . '/delete');

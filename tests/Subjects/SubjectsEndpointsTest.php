@@ -158,7 +158,7 @@ final class SubjectsEndpointsTest extends TestCase
         $this->assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $subject['id']);
         $this->assertSame('Ev', $subject['code']);
         $this->assertSame('Evangelische Religion', $subject['name']);
-        $this->assertSame(['id', 'code', 'name'], array_keys($subject));
+        $this->assertSame(['id', 'code', 'name', 'archived'], array_keys($subject));
         $this->assertCount(1, $this->app->subjects());
     }
 
@@ -314,10 +314,10 @@ final class SubjectsEndpointsTest extends TestCase
         $subjects = $this->list(self::VIEWER)['json']['subjects'];
 
         $this->assertSame(['Bi', 'D1', 'd2', 'D10', 'En', 'Ev', 'Ma', 'ma2'], array_column($subjects, 'code'));
-        $this->assertSame(['id', 'code', 'name'], array_keys($subjects[0]));
+        $this->assertSame(['id', 'code', 'name', 'archived'], array_keys($subjects[0]));
     }
 
-    public function testWaehlbareFaecherSindVorerstAlleFaecherInDerSortierungDerListe(): void
+    public function testWaehlbareFaecherSindAlleAktivenFaecherInDerSortierungDerListe(): void
     {
         $this->createSubject('Ma', 'Mathematik');
         $this->createSubject('Bi', 'Biologie');

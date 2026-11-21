@@ -10,7 +10,7 @@ use TeacherOS\Shared\Text\Text;
 /**
  * Geprueftes Anlegen eines Faches (GLOSSARY.md: Fach). Kuerzel: nach dem Trimmen 1 bis 10 Zeichen, ohne Leerraum im
  * Inneren, nur Buchstaben (auch Umlaute), Ziffern, "-" und "_"; die Schreibung bleibt, die Eindeutigkeit gilt ohne
- * Gross-/Kleinschreibung ({@see self::codeKey()}). Bezeichnung: nach dem Trimmen 1 bis 60 Zeichen, nicht eindeutig.
+ * Gross-/Kleinschreibung ({@see self::codeKey()}). Bezeichnung: nach dem Trimmen 1 bis 60 Zeichen, nicht eindeutig ({@see self::cleanName()}, gilt auch beim Bearbeiten).
  * Getrimmt wird Unicode-bewusst und nach NFC normalisiert wie bei der Klassenbezeichnung ({@see Text}).
  */
 final class SubjectInput
@@ -32,12 +32,22 @@ final class SubjectInput
         if ($length < 1 || $length > self::MAX_CODE_LENGTH || preg_match('/^[\p{L}\p{Nd}_-]+$/u', $code) !== 1) {
             throw new CodedException('invalid_request', 400, 'Bitte ein Kürzel mit 1 bis ' . self::MAX_CODE_LENGTH . ' Zeichen angeben: nur Buchstaben, Ziffern, "-" und "_", ohne Leerzeichen.');
         }
+        return new self($code, self::cleanName($name));
+    }
+
+    /**
+     * Die Bezeichnung nach denselben Regeln beim Anlegen und beim Bearbeiten (Ticket #63): getrimmt, 1 bis 60 Zeichen.
+     *
+     * @throws CodedException `invalid_request` (400)
+     */
+    public static function cleanName(mixed $name): string
+    {
         $name = is_string($name) ? Text::clean($name) : '';
         $length = mb_strlen($name);
         if ($length < 1 || $length > self::MAX_NAME_LENGTH) {
             throw new CodedException('invalid_request', 400, 'Bitte eine Bezeichnung mit 1 bis ' . self::MAX_NAME_LENGTH . ' Zeichen angeben.');
         }
-        return new self($code, $name);
+        return $name;
     }
 
     /** Schluessel der Eindeutigkeit: das Kuerzel ohne Ruecksicht auf Gross-/Kleinschreibung. */

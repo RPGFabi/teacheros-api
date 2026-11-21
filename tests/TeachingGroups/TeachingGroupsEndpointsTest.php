@@ -208,7 +208,7 @@ final class TeachingGroupsEndpointsTest extends TestCase
         $this->assertSame(['id', 'name', 'school_year', 'subject', 'classes'], array_keys($group));
         $this->assertSame('Ma 7', $group['name']);
         $this->assertSame(['id' => $this->year, 'name' => '2090/91'], $group['school_year']);
-        $this->assertSame(['id' => $this->subject, 'code' => 'Ma', 'name' => 'Mathematik'], $group['subject']);
+        $this->assertSame(['id' => $this->subject, 'code' => 'Ma', 'name' => 'Mathematik', 'archived' => false], $group['subject']);
         $this->assertSame(['7a', '7b'], array_column($group['classes'], 'name'), 'Klassen nach Stufe und natuerlicher Bezeichnung');
         $this->assertSame(['id' => $this->class7a, 'grade_level' => 7, 'name' => '7a', 'archived' => false, 'school_year' => ['id' => $this->year, 'name' => '2090/91']], $group['classes'][0]);
         $this->assertCount(1, $this->app->teachingGroups());
@@ -522,7 +522,7 @@ final class TeachingGroupsEndpointsTest extends TestCase
         $this->assertSame(['subjects', 'classes'], array_keys($r['json']));
         $this->assertSame(['Bi', 'Ma'], array_column($r['json']['subjects'], 'code'));
         $this->assertSame(['7a'], array_column($r['json']['classes'], 'name'), 'ohne archivierte und ohne andere Schuljahre');
-        $this->assertSame(['id', 'code', 'name'], array_keys($r['json']['subjects'][0]));
+        $this->assertSame(['id', 'code', 'name', 'archived'], array_keys($r['json']['subjects'][0]));
     }
 
     public function testAuswahlFuerDasFormularBrauchtEinBekanntesSchuljahr(): void

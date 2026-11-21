@@ -188,7 +188,7 @@ final class TeachingGroups
             return [];
         }
         $subjects = [];
-        foreach ($this->subjects->list() as $subject) {
+        foreach ($this->subjects->list(includeArchived: true) as $subject) {
             $subjects[$subject->id] = $subject;
         }
         $classes = $this->classes->listIn($year->id, includeArchived: true);
