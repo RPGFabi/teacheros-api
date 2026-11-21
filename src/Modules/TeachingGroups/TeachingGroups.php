@@ -150,15 +150,15 @@ final class TeachingGroups
         $subject = $classes = null;
         $this->inTransaction(function () use ($id, $input, $actor, &$subject, &$classes): void {
             $subject = $this->subjects->lockSelectable($input->subjectId) ?? throw self::subjectNotSelectable();
-            $classes = $this->lockedSelectableClassesIn($input->schoolYearId, $input->classIds);
+            $classes = $this->lockedSelectableClassesIn($input->schoolYearId, $input->attributes->classIds);
             $this->repository->insert($id, $input);
-            $this->audit->record($actor, AuditLog::TEACHING_GROUP_CREATED, 'teaching_group', $id, ['name' => $input->name]);
+            $this->audit->record($actor, AuditLog::TEACHING_GROUP_CREATED, 'teaching_group', $id, ['name' => $input->attributes->name]);
         }, SchoolYears::notFound());
-        return new TeachingGroup($id, $input->name, $year->ref(), $subject, $classes);
+        return new TeachingGroup($id, $input->attributes->name, $year->ref(), $subject, $classes);
     }
 
     /**
-     * Aendert Bezeichnung und Klassen nach denselben Regeln wie beim Anlegen ({@see TeachingGroupChanges}); $classIds ist die
+     * Aendert Bezeichnung und Klassen nach denselben Regeln wie beim Anlegen ({@see TeachingGroupAttributes}); $classIds ist die
      * gesamte neue Menge der Klassen. Die Eingabe kommt roh und wird erst geprueft, wenn die Fachgruppe gesperrt und als
      * aenderbar erkannt ist: unbekannt (404) und archiviert (409) gehen der Eingabepruefung (400) vor. Schuljahr und Fach sind
      * nicht aenderbar: abweichende $claimedSchoolYearId und $claimedSubjectId werden abgelehnt (400). Neu hinzukommen duerfen
@@ -181,18 +181,18 @@ final class TeachingGroups
             if ($claimedSubjectId !== null && $claimedSubjectId !== $before['subject_id']) {
                 throw new CodedException('invalid_request', 400, 'Das Fach einer Fachgruppe lässt sich nicht ändern.');
             }
-            $changes = TeachingGroupChanges::fromInput($name, $classIds);
+            $attributes = TeachingGroupAttributes::fromInput($name, $classIds);
             $current = $this->repository->classIdsOf($id);
-            $added = array_values(array_diff($changes->classIds, $current));
-            $removed = array_values(array_diff($current, $changes->classIds));
+            $added = array_values(array_diff($attributes->classIds, $current));
+            $removed = array_values(array_diff($current, $attributes->classIds));
             if ($added !== []) {
                 $this->lockedSelectableClassesIn($before['school_year_id'], $added);
             }
             foreach ($removed as $classId) {
                 $this->classRemovalGuards->assertRemovable($id, $classId);
             }
-            $this->repository->update($id, $changes, $added, $removed);
-            $this->audit->record($actor, AuditLog::TEACHING_GROUP_UPDATED, 'teaching_group', $id, ['old_name' => $before['name'], 'name' => $changes->name, 'classes_added' => count($added), 'classes_removed' => count($removed)]);
+            $this->repository->update($id, $attributes, $added, $removed);
+            $this->audit->record($actor, AuditLog::TEACHING_GROUP_UPDATED, 'teaching_group', $id, ['old_name' => $before['name'], 'name' => $attributes->name, 'classes_added' => count($added), 'classes_removed' => count($removed)]);
         }, self::classNotSelectable());
         return $this->get($id);
     }

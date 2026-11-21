@@ -8,13 +8,13 @@ use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Text\Text;
 
 /**
- * Geprueftes Aendern einer Fachgruppe (Ticket #65, GLOSSARY.md: Fachgruppe) und der gemeinsame Teil des Anlegens
- * ({@see TeachingGroupInput}): die Bezeichnung und die Klassen. Die Bezeichnung ist frei gewaehlt, hat nach dem Trimmen 1 bis
+ * Die geprueften Eigenschaften einer Fachgruppe ohne Schuljahr und Fach (GLOSSARY.md: Fachgruppe), beim Anlegen (Ticket #64,
+ * {@see TeachingGroupInput}) wie beim Bearbeiten (Ticket #65) gleich: die Bezeichnung und die Klassen. Die Bezeichnung ist frei gewaehlt, hat nach dem Trimmen 1 bis
  * 40 Zeichen und wird wie die Klassenbezeichnung Unicode-bewusst getrimmt und nach NFC normalisiert ({@see Text}); eindeutig
  * im Schuljahr ist sie ohne Gross-/Kleinschreibung ({@see self::nameKey()}). Die Klassen sind eine Menge: doppelte
  * Kennungen zaehlen einmal, mindestens eine. Ob es die Klassen gibt und ob sie waehlbar sind, prueft {@see TeachingGroups}.
  */
-final class TeachingGroupChanges
+final class TeachingGroupAttributes
 {
     public const MAX_NAME_LENGTH = 40;
 
