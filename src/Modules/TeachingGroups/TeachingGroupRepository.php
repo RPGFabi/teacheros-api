@@ -6,32 +6,34 @@ namespace TeacherOS\Modules\TeachingGroups;
 
 use Hoelzle\Core\Database\DB;
 
-/** Liest und schreibt die Tabellen `teaching_groups` und `teaching_group_classes`. Regeln (Eingabe, Auswahl, Sortierung) liegen nicht hier. */
+/** Liest und schreibt die Tabellen `teaching_groups` und `teaching_group_classes`. Regeln (Eingabe, Auswahl, Archiv, Sortierung) liegen nicht hier. */
 final class TeachingGroupRepository
 {
     /**
-     * Die Fachgruppen eines Schuljahres, unsortiert.
+     * Die Fachgruppen eines Schuljahres, unsortiert; archivierte nur auf Wunsch.
      *
-     * @return list<array{id:string,school_year_id:string,subject_id:string,name:string}>
+     * @return list<array{id:string,school_year_id:string,subject_id:string,name:string,archived:bool}>
      */
-    public function inSchoolYear(string $schoolYearId): array
+    public function inSchoolYear(string $schoolYearId, bool $includeArchived = false): array
     {
-        $stmt = DB::getInstance()->prepare('SELECT `id`, `school_year_id`, `subject_id`, `name` FROM `teaching_groups` WHERE `school_year_id` = :year');
+        $sql = 'SELECT `id`, `school_year_id`, `subject_id`, `name`, `archived_at` FROM `teaching_groups` WHERE `school_year_id` = :year'
+            . ($includeArchived ? '' : ' AND `archived_at` IS NULL');
+        $stmt = DB::getInstance()->prepare($sql);
         $stmt->execute(['year' => $schoolYearId]);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        return array_map(self::row(...), $stmt->fetchAll(\PDO::FETCH_ASSOC));
     }
 
     /**
      * Eine Fachgruppe; mit $lock innerhalb einer Transaktion fuer die Dauer der Aenderung gesperrt.
      *
-     * @return array{id:string,school_year_id:string,subject_id:string,name:string}|null
+     * @return array{id:string,school_year_id:string,subject_id:string,name:string,archived:bool}|null
      */
     public function find(string $id, bool $lock = false): ?array
     {
-        $stmt = DB::getInstance()->prepare('SELECT `id`, `school_year_id`, `subject_id`, `name` FROM `teaching_groups` WHERE `id` = :id' . ($lock ? ' FOR UPDATE' : ''));
+        $stmt = DB::getInstance()->prepare('SELECT `id`, `school_year_id`, `subject_id`, `name`, `archived_at` FROM `teaching_groups` WHERE `id` = :id' . ($lock ? ' FOR UPDATE' : ''));
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : $row;
+        return $row === false ? null : self::row($row);
     }
 
     /**
@@ -79,5 +81,50 @@ final class TeachingGroupRepository
         foreach ($input->classIds as $classId) {
             $link->execute(['id' => $id, 'class' => $classId]);
         }
+    }
+
+    /**
+     * Aendert Bezeichnung (samt `name_key`) und Klassen: legt die neuen Klassen an und entfernt die nicht mehr genannten. Schuljahr
+     * und Fach bleiben.
+     *
+     * @param list<string> $addClassIds
+     * @param list<string> $removeClassIds
+     * @throws \PDOException bei doppelter Bezeichnung im Schuljahr (Fehler 1062) oder fehlender Klasse (Fehler 1452)
+     */
+    public function update(string $id, TeachingGroupChanges $changes, array $addClassIds, array $removeClassIds): void
+    {
+        $db = DB::getInstance();
+        $db->prepare('UPDATE `teaching_groups` SET `name` = :name, `name_key` = :key WHERE `id` = :id')
+            ->execute(['id' => $id, 'name' => $changes->name, 'key' => $changes->nameKey()]);
+        $add = $db->prepare('INSERT INTO `teaching_group_classes` (`teaching_group_id`, `class_id`) VALUES (:id, :class)');
+        foreach ($addClassIds as $classId) {
+            $add->execute(['id' => $id, 'class' => $classId]);
+        }
+        $remove = $db->prepare('DELETE FROM `teaching_group_classes` WHERE `teaching_group_id` = :id AND `class_id` = :class');
+        foreach ($removeClassIds as $classId) {
+            $remove->execute(['id' => $id, 'class' => $classId]);
+        }
+    }
+
+    public function setArchived(string $id, bool $archived): void
+    {
+        DB::getInstance()
+            ->prepare('UPDATE `teaching_groups` SET `archived_at` = ' . ($archived ? 'CURRENT_TIMESTAMP(6)' : 'NULL') . ' WHERE `id` = :id')
+            ->execute(['id' => $id]);
+    }
+
+    /** Loescht die Fachgruppe; ihre Klassen-Verknuepfungen entfaellt die Datenbank mit (ON DELETE CASCADE). */
+    public function delete(string $id): void
+    {
+        DB::getInstance()->prepare('DELETE FROM `teaching_groups` WHERE `id` = :id')->execute(['id' => $id]);
+    }
+
+    /**
+     * @param array<string,mixed> $r
+     * @return array{id:string,school_year_id:string,subject_id:string,name:string,archived:bool}
+     */
+    private static function row(array $r): array
+    {
+        return ['id' => $r['id'], 'school_year_id' => $r['school_year_id'], 'subject_id' => $r['subject_id'], 'name' => $r['name'], 'archived' => $r['archived_at'] !== null];
     }
 }
