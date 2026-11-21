@@ -78,6 +78,15 @@ final class AuditLog
     /** Eine Fachgruppe wurde angelegt (Ticket #64); Objekt: Kennung der Fachgruppe, Kontext: name (Bezeichnung); Schuljahr, Fach und Klassen gehoeren nicht in den Kontext. */
     public const TEACHING_GROUP_CREATED = 'teaching_group.created';
 
+    /** Eine Lehrkraft wurde einer Fachgruppe zugeordnet (Ticket #67); Objekt: Kennung der Zuordnung, Kontext: teaching_group_id, teacher_id (Kennung des Kontos), starts_on (erster Tag), ends_on (letzter Tag einschliesslich, null = offen). */
+    public const TEACHER_ASSIGNMENT_CREATED = 'teacher_assignment.created';
+
+    /** Eine Zuordnung wurde beendet (Ticket #67); Objekt: Kennung, Kontext wie beim Anlegen, mit dem neuen Ende. */
+    public const TEACHER_ASSIGNMENT_ENDED = 'teacher_assignment.ended';
+
+    /** Eine noch nie gueltige Zuordnung wurde geloescht (Ticket #67); Objekt: Kennung, Kontext wie beim Anlegen. */
+    public const TEACHER_ASSIGNMENT_DELETED = 'teacher_assignment.deleted';
+
     /** Die Bezeichnung eines Faches wurde geaendert (Ticket #63); Objekt: Kennung, Kontext: code (Kuerzel), old_name (alte Bezeichnung), name (neue Bezeichnung). */
     public const SUBJECT_UPDATED = 'subject.updated';
 

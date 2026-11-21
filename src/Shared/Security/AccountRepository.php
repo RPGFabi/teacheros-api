@@ -205,6 +205,62 @@ final class AccountRepository
         return $this->withRole($roleKey, AccountStatus::Active) !== [];
     }
 
+    /**
+     * Die Konten mit der Rolle $roleKey, die nicht deaktiviert sind (eingeladen oder aktiv), nach Anmeldename (ohne
+     * Gross-/Kleinschreibung), dann Kennung: wen man einer Sache zuordnen kann (Lehrkraft-Zuordnung, ADR 0007).
+     *
+     * @return list<array{id:string,email:?string,login_name:string,status:string}>
+     */
+    public function assignableWithRole(string $roleKey): array
+    {
+        $stmt = DB::getInstance()->prepare(
+            'SELECT a.`public_user_id` AS id, a.`email`, a.`login_name`, a.`status` FROM `accounts` a
+             JOIN `permission_user_roles` ur ON ur.`user_uuid` = a.`public_user_id`
+             JOIN `permission_roles` r ON r.`id` = ur.`role_id`
+             WHERE r.`role_key` = :role AND a.`status` <> :inactive ORDER BY a.`login_name`, a.`public_user_id`'
+        );
+        $stmt->execute(['role' => $roleKey, 'inactive' => AccountStatus::Inactive->value]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Hat das Konto die Rolle $roleKey und ist nicht deaktiviert? Mit $lock innerhalb einer Transaktion wird die Zeile des
+     * Kontos fuer die Dauer der Aenderung gesperrt (ein gleichzeitiges Deaktivieren kommt danach dran).
+     */
+    public function isAssignableWithRole(string $publicUserId, string $roleKey, bool $lock = false): bool
+    {
+        $stmt = DB::getInstance()->prepare(
+            'SELECT 1 FROM `accounts` a
+             JOIN `permission_user_roles` ur ON ur.`user_uuid` = a.`public_user_id`
+             JOIN `permission_roles` r ON r.`id` = ur.`role_id`
+             WHERE a.`public_user_id` = :id AND r.`role_key` = :role AND a.`status` <> :inactive' . ($lock ? ' FOR UPDATE' : '')
+        );
+        $stmt->execute(['id' => $publicUserId, 'role' => $roleKey, 'inactive' => AccountStatus::Inactive->value]);
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Kennung, Anmeldename, E-Mail und Status der Konten mit diesen Kennungen (jeder Status); unbekannte fehlen.
+     *
+     * @param list<string> $publicUserIds
+     * @return array<string,array{id:string,email:?string,login_name:string,status:string}> nach Kennung
+     */
+    public function summaries(array $publicUserIds): array
+    {
+        if ($publicUserIds === []) {
+            return [];
+        }
+        $stmt = DB::getInstance()->prepare(
+            'SELECT `public_user_id` AS id, `email`, `login_name`, `status` FROM `accounts` WHERE `public_user_id` IN (' . implode(',', array_fill(0, count($publicUserIds), '?')) . ')'
+        );
+        $stmt->execute(array_values($publicUserIds));
+        $byId = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $byId[$row['id']] = $row;
+        }
+        return $byId;
+    }
+
     /** @return list<string> public_user_ids der nur eingeladenen Konten mit der Rolle $roleKey */
     public function invitedWithRole(string $roleKey): array
     {
