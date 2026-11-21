@@ -194,6 +194,7 @@ final class HttpTestApp
     public function resetClasses(): void
     {
         $this->resetTeachingGroups();
+        $this->pdo()->exec('DELETE FROM `class_leaders`');
         $this->pdo()->exec('DELETE FROM `test_class_links`');
         $this->pdo()->exec('DELETE FROM `classes`');
     }

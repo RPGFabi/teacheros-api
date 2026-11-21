@@ -87,6 +87,15 @@ final class AuditLog
     /** Eine noch nie gueltige Zuordnung wurde geloescht (Ticket #67); Objekt: Kennung, Kontext wie beim Anlegen. */
     public const TEACHER_ASSIGNMENT_DELETED = 'teacher_assignment.deleted';
 
+    /** Eine Lehrkraft wurde Klassenleitung einer Klasse (Ticket #68); Objekt `class_lead`: Kennung der Klassenleitung, Kontext: class_id, teacher_id (Kennung des Kontos), starts_on (erster Tag), ends_on (letzter Tag einschliesslich, null = offen). */
+    public const CLASS_LEAD_CREATED = 'class_lead.created';
+
+    /** Eine Klassenleitung wurde beendet (Ticket #68); Objekt: Kennung, Kontext wie beim Anlegen, mit dem neuen Ende. */
+    public const CLASS_LEAD_ENDED = 'class_lead.ended';
+
+    /** Eine noch nie gueltige Klassenleitung wurde geloescht (Ticket #68); Objekt: Kennung, Kontext wie beim Anlegen. */
+    public const CLASS_LEAD_DELETED = 'class_lead.deleted';
+
     /** Bezeichnung oder Klassen einer Fachgruppe wurden geaendert (Ticket #65); Objekt: Kennung der Fachgruppe, Kontext: old_name (alte Bezeichnung), name (neue Bezeichnung), classes_added und classes_removed (Anzahl hinzugefuegter und entfernter Klassen); Schuljahr und Fach gehoeren nicht in den Kontext, weil sie unveraenderlich sind. */
     public const TEACHING_GROUP_UPDATED = 'teaching_group.updated';
 
