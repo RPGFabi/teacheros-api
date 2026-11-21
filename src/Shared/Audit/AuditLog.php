@@ -87,6 +87,18 @@ final class AuditLog
     /** Eine noch nie gueltige Zuordnung wurde geloescht (Ticket #67); Objekt: Kennung, Kontext wie beim Anlegen. */
     public const TEACHER_ASSIGNMENT_DELETED = 'teacher_assignment.deleted';
 
+    /** Bezeichnung oder Klassen einer Fachgruppe wurden geaendert (Ticket #65); Objekt: Kennung der Fachgruppe, Kontext: old_name (alte Bezeichnung), name (neue Bezeichnung), classes_added und classes_removed (Anzahl hinzugefuegter und entfernter Klassen); Schuljahr und Fach gehoeren nicht in den Kontext, weil sie unveraenderlich sind. */
+    public const TEACHING_GROUP_UPDATED = 'teaching_group.updated';
+
+    /** Eine Fachgruppe wurde archiviert (Ticket #65); Objekt: Kennung, Kontext: name. */
+    public const TEACHING_GROUP_ARCHIVED = 'teaching_group.archived';
+
+    /** Eine archivierte Fachgruppe wurde wiederhergestellt (Ticket #65); Objekt: Kennung, Kontext: name. */
+    public const TEACHING_GROUP_RESTORED = 'teaching_group.restored';
+
+    /** Eine unverknuepfte Fachgruppe wurde endgueltig geloescht (Ticket #65); Objekt: Kennung, Kontext: name. */
+    public const TEACHING_GROUP_DELETED = 'teaching_group.deleted';
+
     /** Die Bezeichnung eines Faches wurde geaendert (Ticket #63); Objekt: Kennung, Kontext: code (Kuerzel), old_name (alte Bezeichnung), name (neue Bezeichnung). */
     public const SUBJECT_UPDATED = 'subject.updated';
 

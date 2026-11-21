@@ -56,6 +56,12 @@ final class TeacherAssignmentsEndpointsTest extends TestCase
         $this->group = $this->post('/api/teaching-groups', ['school_year_id' => $this->year, 'subject_id' => $subject, 'name' => 'Ma 7', 'class_ids' => [$class]])['json']['teaching_group']['id'];
     }
 
+    protected function tearDown(): void
+    {
+        // Die Modulpruefungs-Tests geben das Modul `observe` frei; andere Testklassen erwarten es ungenehmigt.
+        $this->app->resetModules();
+    }
+
     /** @return array{status:int, body:string, json:?array} */
     private function request(string $method, string $uri, ?array $body = null, string $sub = self::ADMIN, ?string $today = null): array
     {
@@ -491,11 +497,68 @@ final class TeacherAssignmentsEndpointsTest extends TestCase
         $this->assertSame('school_year_has_teacher_assignments', $this->updateYear('2090-09-01', '2091-05-31')['json']['code']);
     }
 
+    // --- Archivierte und verknuepfte Fachgruppe (Ticket #65) ---
+
+    private function archiveGroup(): void
+    {
+        $r = $this->post('/api/teaching-groups/' . $this->group . '/archive');
+        $this->assertSame(200, $r['status'], $r['body']);
+    }
+
+    public function testEinerArchiviertenFachgruppeWirdNichtsNeuZugeordnet(): void
+    {
+        $this->archiveGroup();
+
+        $r = $this->assign(self::TEACHER_A);
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('teaching_group_archived', $r['json']['code']);
+        $this->assertSame([], $this->rows());
+    }
+
+    public function testArchivierenBeendetLaufendeZuordnungenNichtSieLassenSichWeiterBeendenUndLesen(): void
+    {
+        $id = $this->created(self::TEACHER_A, '2090-09-01', null, self::DATED, self::TODAY);
+
+        $this->archiveGroup();
+
+        $row = $this->rows()[0];
+        $this->assertSame(['2090-09-01', null], [$row['valid_from'], $row['valid_until']], 'unveraendert');
+        $this->assertCount(1, $this->list(self::ADMIN, self::DATED, self::TODAY)['json']['teacher_assignments']);
+        $r = $this->request('POST', self::DATED . '/' . $id . '/end', ['ends_on' => '2090-12-18'], self::ADMIN, self::TODAY);
+        $this->assertSame(200, $r['status'], $r['body']);
+    }
+
+    public function testEineFachgruppeMitZuordnungenGiltAlsVerknuepftLoeschenWirdAufArchivierenVerwiesen(): void
+    {
+        $id = $this->created(self::TEACHER_A, '2090-09-01', '2090-10-01', self::DATED, self::TODAY);
+
+        $r = $this->post('/api/teaching-groups/' . $this->group . '/delete');
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('teaching_group_linked', $r['json']['code']);
+        $this->assertStringContainsString('Lehrkraft-Zuordnung', $r['json']['error']);
+        $this->assertStringContainsString('archivieren', $r['json']['error']);
+        $this->assertCount(1, $this->app->teachingGroups());
+
+        $this->archiveGroup();
+        $this->assertSame('teaching_group_linked', $this->post('/api/teaching-groups/' . $this->group . '/delete')['json']['code'], 'auch archiviert');
+        $this->assertSame($id, $this->rows()[0]['id']);
+    }
+
+    public function testEineFachgruppeOhneZuordnungenLaesstSichLoeschen(): void
+    {
+        $id = $this->created(self::TEACHER_A, '2090-10-01');
+        $this->assertSame(200, $this->post(self::URI . '/' . $id . '/delete')['status']);
+
+        $this->assertSame(200, $this->post('/api/teaching-groups/' . $this->group . '/delete')['status']);
+    }
+
     public function testDieMigrationIstWiederholbar(): void
     {
         $this->created(self::TEACHER_A);
 
-        $this->app->rerunMigrations('0023_teacher_assignments.php');
+        $this->app->rerunMigrations('0024_teacher_assignments.php');
 
         $this->assertCount(1, $this->rows());
     }

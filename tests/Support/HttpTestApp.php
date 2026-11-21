@@ -123,6 +123,9 @@ final class HttpTestApp
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_class_links` (`class_id` char(36) NOT NULL PRIMARY KEY)');
         // Ebenso fuer die Test-Verknuepfung von Faechern (Ticket #63).
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_subject_links` (`subject_id` char(36) NOT NULL PRIMARY KEY)');
+        // Ebenso fuer die Test-Verknuepfung von Fachgruppen und den Test-Einwand gegen das Entfernen einer Klasse aus einer Fachgruppe (Ticket #65).
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_teaching_group_links` (`teaching_group_id` char(36) NOT NULL PRIMARY KEY)');
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_teaching_group_class_blocks` (`teaching_group_id` char(36) NOT NULL, `class_id` char(36) NOT NULL, PRIMARY KEY (`teaching_group_id`, `class_id`))');
         // Ebenso fuer die Test-Pruefung der Schuljahre: welche Aktion (update/delete) an welchem Schuljahr gesperrt ist.
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_school_year_blocks` (`school_year_id` char(36) NOT NULL, `action` varchar(10) NOT NULL, PRIMARY KEY (`school_year_id`, `action`))');
     }
@@ -225,8 +228,23 @@ final class HttpTestApp
     public function resetTeachingGroups(): void
     {
         $this->pdo()->exec('DELETE FROM `teacher_assignments`');
+
+        $this->pdo()->exec('DELETE FROM `test_teaching_group_links`');
+        $this->pdo()->exec('DELETE FROM `test_teaching_group_class_blocks`');
         $this->pdo()->exec('DELETE FROM `teaching_group_classes`');
         $this->pdo()->exec('DELETE FROM `teaching_groups`');
+    }
+
+    /** Verknuepft eine Fachgruppe mit der Test-Verknuepfung (stellvertretend fuer ein spaeteres Modul wie #67). */
+    public function linkTeachingGroup(string $teachingGroupId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_teaching_group_links` (`teaching_group_id`) VALUES (?)')->execute([$teachingGroupId]);
+    }
+
+    /** Laesst die Test-Pruefung das Entfernen dieser Klasse aus dieser Fachgruppe ablehnen (stellvertretend fuer #19). */
+    public function blockClassRemoval(string $teachingGroupId, string $classId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_teaching_group_class_blocks` (`teaching_group_id`, `class_id`) VALUES (?, ?)')->execute([$teachingGroupId, $classId]);
     }
 
     /** @return list<array<string,mixed>> nach Anlegezeitpunkt */

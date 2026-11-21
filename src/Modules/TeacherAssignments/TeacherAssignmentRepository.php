@@ -56,15 +56,26 @@ final class TeacherAssignmentRepository
     }
 
     /**
-     * Sperrt die Fachgruppe fuer die Dauer der Transaktion (Anlegen von Zuordnungen derselben Fachgruppe laeuft nacheinander)
-     * und liefert die Kennung ihres Schuljahres, oder null, wenn es die Fachgruppe nicht gibt.
+     * Sperrt die Fachgruppe fuer die Dauer der Transaktion (Anlegen von Zuordnungen derselben Fachgruppe laeuft nacheinander,
+     * ebenso das Archivieren) und liefert die Kennung ihres Schuljahres und ob sie archiviert ist, oder null, wenn es die
+     * Fachgruppe nicht gibt.
+     *
+     * @return array{school_year_id:string,archived:bool}|null
      */
-    public function lockGroup(string $teachingGroupId): ?string
+    public function lockGroup(string $teachingGroupId): ?array
     {
-        $stmt = DB::getInstance()->prepare('SELECT `school_year_id` FROM `teaching_groups` WHERE `id` = :id FOR UPDATE');
+        $stmt = DB::getInstance()->prepare('SELECT `school_year_id`, `archived_at` FROM `teaching_groups` WHERE `id` = :id FOR UPDATE');
         $stmt->execute(['id' => $teachingGroupId]);
-        $yearId = $stmt->fetchColumn();
-        return $yearId === false ? null : (string) $yearId;
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row === false ? null : ['school_year_id' => (string) $row['school_year_id'], 'archived' => $row['archived_at'] !== null];
+    }
+
+    /** Haengt an der Fachgruppe mindestens eine Zuordnung (auch eine beendete)? */
+    public function groupHasAssignments(string $teachingGroupId): bool
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `teacher_assignments` WHERE `teaching_group_id` = :group LIMIT 1');
+        $stmt->execute(['group' => $teachingGroupId]);
+        return $stmt->fetchColumn() !== false;
     }
 
     /**

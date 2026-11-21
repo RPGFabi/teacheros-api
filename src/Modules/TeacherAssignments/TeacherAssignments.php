@@ -22,7 +22,8 @@ use TeacherOS\Shared\Uuid;
  * Klassenleitungen (#68); wer Lehrkraft ist, entscheidet {@see Teachers}; die Obergrenze liefert
  * {@see SchoolLimits::maxTeachersPerTeachingGroup()}. Hier steht nur, was an der Fachgruppe haengt: Sperren, Speichern, Audit.
  * Noetige Daten kommen ueber Dienste ({@see SchoolYears}, {@see Teachers}); die Fachgruppe liest der Dienst ueber ihren Speicher.
- * Die Fachgruppe hat noch keinen Archiv-Zustand (Ticket #65 traegt "keine Zuordnung an archivierte Fachgruppen" nach).
+ * Einer archivierten Fachgruppe (Ticket #65) wird nichts neu zugeordnet; Archivieren beendet laufende Zuordnungen nicht, sie
+ * lassen sich weiter beenden. Dass eine Fachgruppe mit Zuordnungen als verknuepft gilt, meldet {@see TeacherAssignmentsLinkGuard}.
  */
 final class TeacherAssignments
 {
@@ -65,7 +66,7 @@ final class TeacherAssignments
      * Zuordnung, {@see TeacherAssignmentsSchoolYearGuard}); Anlegen und Audit `teacher_assignment.created` in einer Transaktion.
      * Ohne `$startsOn` beginnt sie am ersten Tag des Schuljahres, ohne `$endsOn` ist sie offen (bis Schuljahresende).
      *
-     * @throws CodedException `teaching_group_not_found` (404), `invalid_period`/`period_outside_school_year` (422),
+     * @throws CodedException `teaching_group_not_found` (404), `teaching_group_archived` (409), `invalid_period`/`period_outside_school_year` (422),
      *     `teacher_not_selectable` (409), `assignment_overlap` (409), `assignment_limit_reached` (409)
      */
     public function create(Actor $actor, string $teachingGroupId, string $accountId, mixed $startsOn, mixed $endsOn): TeacherAssignment
@@ -73,9 +74,12 @@ final class TeacherAssignments
         $id = Uuid::v4();
         $created = null;
         $this->inTransaction(function () use ($actor, $teachingGroupId, $accountId, $startsOn, $endsOn, $id, &$created): void {
-            $yearId = $this->repository->lockGroup($teachingGroupId) ?? throw self::groupNotFound();
-            $this->repository->lockSchoolYear($yearId, exclusive: false);
-            $year = $this->schoolYears->get($yearId);
+            $group = $this->repository->lockGroup($teachingGroupId) ?? throw self::groupNotFound();
+            if ($group['archived']) {
+                throw new CodedException('teaching_group_archived', 409, 'Die Fachgruppe ist archiviert. Ihr lassen sich keine Lehrkräfte neu zuordnen; bestehende Zuordnungen bleiben und lassen sich beenden.');
+            }
+            $this->repository->lockSchoolYear($group['school_year_id'], exclusive: false);
+            $year = $this->schoolYears->get($group['school_year_id']);
             $period = $this->rules->period($year, $startsOn, $endsOn);
             $this->teachers->assertSelectable($accountId);
             $this->rules->assertCanAdd($year, $period, $accountId, $this->assignments($teachingGroupId), $this->limits->maxTeachersPerTeachingGroup());

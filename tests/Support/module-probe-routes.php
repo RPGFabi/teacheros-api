@@ -29,6 +29,12 @@ use TeacherOS\Modules\Subjects\SubjectRoutes;
 use TeacherOS\Modules\Subjects\SubjectsModule;
 use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentRoutes;
 use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentsModule;
+
+use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalGuard;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalGuards;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalObjection;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuard;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuards;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupRoutes;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupsModule;
 use TeacherOS\Shared\Clock\FixedClock;
@@ -101,6 +107,39 @@ final class TestSubjectLinkGuard implements SubjectLinkGuard
     }
 }
 
+/**
+ * Test-Verknuepfung fuer den Erweiterungspunkt der Fachgruppen (Ticket #65), wie es spaeter #67 tut: verknuepft ist, was in
+ * `test_teaching_group_links` steht (`HttpTestApp::linkTeachingGroup`).
+ */
+final class TestTeachingGroupLinkGuard implements TeachingGroupLinkGuard
+{
+    public function label(): string
+    {
+        return 'Testverknüpfung';
+    }
+
+    public function isLinked(string $teachingGroupId): bool
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_teaching_group_links` WHERE `teaching_group_id` = :id');
+        $stmt->execute(['id' => $teachingGroupId]);
+        return $stmt->fetchColumn() !== false;
+    }
+}
+
+/**
+ * Test-Einwand gegen das Entfernen einer Klasse aus einer Fachgruppe (Ticket #65), wie es spaeter #19 tut: abgelehnt wird,
+ * was in `test_teaching_group_class_blocks` steht (`HttpTestApp::blockClassRemoval`).
+ */
+final class TestTeachingGroupClassRemovalGuard implements TeachingGroupClassRemovalGuard
+{
+    public function objectionToRemoval(string $teachingGroupId, string $classId): ?TeachingGroupClassRemovalObjection
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_teaching_group_class_blocks` WHERE `teaching_group_id` = :group AND `class_id` = :class');
+        $stmt->execute(['group' => $teachingGroupId, 'class' => $classId]);
+        return $stmt->fetchColumn() === false ? null : new TeachingGroupClassRemovalObjection('test_class_removal_blocked', 'Test: Entfernen der Klasse gesperrt.');
+    }
+}
+
 return static function (ApiRouter $router, ExtensionPoints $points): void {
     $router->get(
         '/api/test/observe-probe',
@@ -142,8 +181,10 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
         ModuleGate::route(ModuleCatalog::CORE, [RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]),
     );
 
-    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57, #63).
+    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57, #63, #65).
     $points->get(SchoolYearGuards::class)->register(new TestSchoolYearGuard());
     $points->get(ClassLinkGuards::class)->register(new TestClassLinkGuard());
     $points->get(SubjectLinkGuards::class)->register(new TestSubjectLinkGuard());
+    $points->get(TeachingGroupLinkGuards::class)->register(new TestTeachingGroupLinkGuard());
+    $points->get(TeachingGroupClassRemovalGuards::class)->register(new TestTeachingGroupClassRemovalGuard());
 };

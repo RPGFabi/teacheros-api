@@ -205,7 +205,7 @@ final class TeachingGroupsEndpointsTest extends TestCase
         $this->assertSame(201, $r['status'], $r['body']);
         $group = $r['json']['teaching_group'];
         $this->assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $group['id']);
-        $this->assertSame(['id', 'name', 'school_year', 'subject', 'classes'], array_keys($group));
+        $this->assertSame(['id', 'name', 'archived', 'school_year', 'subject', 'classes'], array_keys($group));
         $this->assertSame('Ma 7', $group['name']);
         $this->assertSame(['id' => $this->year, 'name' => '2090/91'], $group['school_year']);
         $this->assertSame(['id' => $this->subject, 'code' => 'Ma', 'name' => 'Mathematik', 'archived' => false], $group['subject']);
@@ -452,7 +452,7 @@ final class TeachingGroupsEndpointsTest extends TestCase
 
         $this->assertSame(['Zeta', 'a-kurs', 'B-Kurs', 'Kurs 1', 'Kurs 2', 'Kurs 10'], array_column($groups, 'name'));
         $this->assertSame(['De', 'En', 'En', 'Ma', 'Ma', 'Ma'], array_column(array_column($groups, 'subject'), 'code'));
-        $this->assertSame(['id', 'name', 'school_year', 'subject', 'classes'], array_keys($groups[0]));
+        $this->assertSame(['id', 'name', 'archived', 'school_year', 'subject', 'classes'], array_keys($groups[0]));
     }
 
     public function testListeZeigtJeFachgruppeIhreKlassen(): void
