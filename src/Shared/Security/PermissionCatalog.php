@@ -20,6 +20,8 @@ final class PermissionCatalog
     public const ROLES_ASSIGN = 'roles.assign';
     public const PERMISSIONS_ASSIGN = 'permissions.assign';
     public const ACCOUNTS_DEACTIVATE = 'accounts.deactivate';
+    public const ACCOUNTS_REVOKE_SESSIONS = 'accounts.revoke_sessions';
+    public const ACCOUNTS_RESET_MFA = 'accounts.reset_mfa';
     public const SCHOOL_YEARS_VIEW = 'school_years.view';
     public const SCHOOL_YEARS_MANAGE = 'school_years.manage';
     public const CLASSES_VIEW = 'classes.view';
@@ -32,10 +34,17 @@ final class PermissionCatalog
     public const ADMINISTRATION = [self::ROLES_MANAGE, self::ROLES_ASSIGN, self::PERMISSIONS_ASSIGN];
 
     /**
-     * Wer ein Kontodetail lesen darf, zusaetzlich zu `accounts.view` (ADR 0002 B4, Review #12): eines der drei
-     * Verwaltungsrechte oder `accounts.deactivate` (der Verwalter der Deaktivierung braucht die Lesesicht).
+     * Die Rechte fuer Aktionen am Konto selbst, die lokal wirken und den Anmeldedienst unterrichten (ADR 0002 Nachtrag
+     * #16, Ticket #47). Wer eines hat (und `accounts.view`), darf "Abgleich wiederholen", der alle offenen Aufrufe eines
+     * Kontos nachholt. Der Widerruf (#48) hat `accounts.revoke_sessions`, die TOTP-Zuruecksetzung (#49) `accounts.reset_mfa`.
      */
-    public const ACCOUNT_DETAIL_READERS = [...self::ADMINISTRATION, self::ACCOUNTS_DEACTIVATE];
+    public const ACCOUNT_ACTION_RIGHTS = [self::ACCOUNTS_DEACTIVATE, self::ACCOUNTS_REVOKE_SESSIONS, self::ACCOUNTS_RESET_MFA];
+
+    /**
+     * Wer ein Kontodetail lesen darf, zusaetzlich zu `accounts.view` (ADR 0002 B4, Review #12): eines der drei
+     * Verwaltungsrechte oder ein Konto-Recht (der Verwalter der Deaktivierung braucht die Lesesicht).
+     */
+    public const ACCOUNT_DETAIL_READERS = [...self::ADMINISTRATION, ...self::ACCOUNT_ACTION_RIGHTS];
 
     private const GROUP_ACCOUNTS = 'Konten';
     private const GROUP_ROLES = 'Rollen und Rechte';
@@ -52,6 +61,8 @@ final class PermissionCatalog
             ['key' => self::ACCOUNTS_VIEW, 'name' => 'Konten ansehen', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ACCOUNTS_INVITE, 'name' => 'Konten einladen', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ACCOUNTS_DEACTIVATE, 'name' => 'Konten deaktivieren und reaktivieren', 'group' => self::GROUP_ACCOUNTS],
+            ['key' => self::ACCOUNTS_REVOKE_SESSIONS, 'name' => 'Sitzungen von Konten beenden', 'group' => self::GROUP_ACCOUNTS],
+            ['key' => self::ACCOUNTS_RESET_MFA, 'name' => 'TOTP von Konten zurücksetzen', 'group' => self::GROUP_ACCOUNTS],
             ['key' => self::ROLES_MANAGE, 'name' => 'Rollen verwalten', 'group' => self::GROUP_ROLES],
             ['key' => self::ROLES_ASSIGN, 'name' => 'Rollen vergeben und entziehen', 'group' => self::GROUP_ROLES],
             ['key' => self::PERMISSIONS_ASSIGN, 'name' => 'Einzelrechte vergeben und entziehen', 'group' => self::GROUP_ROLES],

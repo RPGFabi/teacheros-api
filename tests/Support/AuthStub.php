@@ -91,7 +91,7 @@ final class AuthStub
         ];
     }
 
-    /** Haengt die naechste Antwort fuer `invite`, `delete`, `disable-login`, `enable-login` oder `mfa-requirement` an ({status, body, delay}); je Aufruf wird eine verbraucht. */
+    /** Haengt die naechste Antwort fuer `invite`, `delete`, `disable-login`, `enable-login`, `mfa-requirement`, `revoke-sessions` oder `mfa-reset` an ({status, body, delay}); je Aufruf wird eine verbraucht. */
     public function script(string $endpoint, array $response): void
     {
         $ctx = stream_context_create(['http' => [
@@ -130,6 +130,18 @@ final class AuthStub
     public function mfaRequirementCalls(): array
     {
         return $this->callsTo('/internal/users/mfa-requirement');
+    }
+
+    /** @return list<array{path:string, body:?array, signature_valid:bool, content_type:string}> */
+    public function revokeSessionsCalls(): array
+    {
+        return $this->callsTo('/internal/users/revoke-sessions');
+    }
+
+    /** @return list<array{path:string, body:?array, signature_valid:bool, content_type:string}> */
+    public function mfaResetCalls(): array
+    {
+        return $this->callsTo('/internal/users/mfa-reset');
     }
 
     /** @return list<array{path:string, body:?array, signature_valid:bool, content_type:string}> */

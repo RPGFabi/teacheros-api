@@ -259,6 +259,25 @@ final class HttpTestApp
             ->execute([$publicUserId, $status, $email, $loginName ?? $email ?? $publicUserId]);
     }
 
+    /**
+     * Die offenen Aufrufe eines Kontos als [Aufruf => Ablehnungscode] ("Abgleich offen", Ticket #47), in Eintragsreihenfolge.
+     *
+     * @return array<string,?string>
+     */
+    public function openCalls(string $publicUserId): array
+    {
+        $stmt = $this->pdo()->prepare('SELECT `operation`, `rejection_code` FROM `account_open_calls` WHERE `account_id` = ? ORDER BY `id`');
+        $stmt->execute([$publicUserId]);
+        return $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+    }
+
+    /** Tragt einen offenen Aufruf direkt ein (Testaufbau, nicht der fachliche Weg). */
+    public function addOpenCall(string $publicUserId, string $operation, ?string $rejectionCode = null): void
+    {
+        $this->pdo()->prepare('INSERT INTO `account_open_calls` (`account_id`, `operation`, `rejection_code`) VALUES (?, ?, ?)')
+            ->execute([$publicUserId, $operation, $rejectionCode]);
+    }
+
     /** @return list<array<string,mixed>> */
     public function accounts(): array
     {
@@ -285,6 +304,16 @@ final class HttpTestApp
         $out = stream_get_contents($pipes[1]);
         $err = stream_get_contents($pipes[2]);
         return ['code' => proc_close($p), 'out' => $out, 'err' => $err];
+    }
+
+    /**
+     * Rueckt die Sitzungsgrenze eines Kontos in die Vergangenheit. So kann ein Test-Token entstehen, das nach der Grenze, aber
+     * vor "jetzt" ausgestellt wurde (wie ein Token einer neuen Anmeldung, bevor der erste Request die Grenze beim Nachholen
+     * auf "jetzt" setzt); ein Token aus der Zukunft der Datenbankuhr gibt es im Betrieb nicht.
+     */
+    public function ageSessionBoundary(string $publicUserId, int $seconds = 10): void
+    {
+        $this->pdo()->prepare('UPDATE `accounts` SET `sessions_valid_after` = `sessions_valid_after` - INTERVAL ? SECOND WHERE `public_user_id` = ?')->execute([$seconds, $publicUserId]);
     }
 
     public function setAccountStatus(string $publicUserId, string $status): void

@@ -13,6 +13,7 @@ use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Modules\Accounts\AccountAccessController;
 use TeacherOS\Modules\Accounts\AccountsController;
+use TeacherOS\Modules\Accounts\OwnAccountController;
 use TeacherOS\Modules\Classes\ClassesModule;
 use TeacherOS\Modules\Roles\RolesController;
 use TeacherOS\Modules\SchoolYears\SchoolYearsModule;
@@ -55,6 +56,8 @@ final class AppBootstrap
         // die Einrichtung anstossen kann.
         $authenticated = [[AuthenticationMiddleware::class, 'handle']];
         $router->get('/api/me', [self::class, 'me'], [[AuthenticationMiddleware::class, 'handleAllowingMfaEnrollment']]);
+        // Eigener Sitzungswiderruf auf "Mein Konto" (Ticket #50): ohne besonderes Recht, jedes Konto beendet nur seine eigenen Sitzungen.
+        $router->post('/api/me/revoke-sessions', [OwnAccountController::class, 'revokeSessions'], $authenticated);
 
         $router->get('/api/accounts', [AccountsController::class, 'index'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
         $router->post('/api/accounts/invitations', [AccountsController::class, 'invite'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_INVITE)]);
@@ -81,8 +84,14 @@ final class AppBootstrap
         // Die Antworten sind die Lesesicht des Kontos: darum zusaetzlich accounts.view (Review #12).
         $deactivator = [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_DEACTIVATE), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)];
         $router->post('/api/accounts/:id/deactivate', [AccountAccessController::class, 'deactivate'], $deactivator);
-        $router->post('/api/accounts/:id/resync-login', [AccountAccessController::class, 'resyncLogin'], $deactivator);
+        // "Abgleich wiederholen" (Ticket #47): eines der Konto-Rechte genuegt, wie bei den Aufrufen, die es nachholt.
+        $resyncer = [...$authenticated, RequirePermission::forAny(PermissionCatalog::ACCOUNT_ACTION_RIGHTS), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)];
+        $router->post('/api/accounts/:id/resync-login', [AccountAccessController::class, 'resyncLogin'], $resyncer);
         $router->post('/api/accounts/:id/reactivate', [AccountAccessController::class, 'reactivate'], $deactivator);
+        // Sitzungswiderruf durch die Verwaltung (Ticket #48): eigenes Recht, dazu accounts.view wegen der Lesesicht als Antwort.
+        $router->post('/api/accounts/:id/revoke-sessions', [AccountAccessController::class, 'revokeSessions'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_REVOKE_SESSIONS), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
+        // TOTP-Zuruecksetzung durch die Verwaltung (Ticket #49): eigenes Recht, dazu accounts.view wegen der Lesesicht als Antwort.
+        $router->post('/api/accounts/:id/reset-totp', [AccountAccessController::class, 'resetTotp'], [...$authenticated, RequirePermission::for(PermissionCatalog::ACCOUNTS_RESET_MFA), RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]);
 
         // Einzelrechte (Ticket #36): gewaehren, entziehen, zuruecksetzen, je Recht einzeln.
         $permissionAssigner = [...$authenticated, RequirePermission::for(PermissionCatalog::PERMISSIONS_ASSIGN)];

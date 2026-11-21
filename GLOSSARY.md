@@ -44,6 +44,14 @@ _Avoid_: Registrierung, Provisionierung
 Die Sperre eines aktiven Kontos durch die Verwaltung: Das Konto kann sich nicht mehr anmelden, laufende Sitzungen enden sofort. Konto, Person, Rollen und Daten bleiben erhalten; das Konto ist `deaktiviert`. Die **Reaktivierung** hebt die Sperre auf und stellt den vorigen Zugang wieder her, ohne alte Sitzungen zurückzubringen.
 _Avoid_: Sperrung, Löschung, inaktiv
 
+**Sitzungswiderruf**:
+Das sofortige Beenden aller laufenden Sitzungen eines Kontos, durch die Verwaltung oder durch die Person selbst. Anmeldung, Passwort und TOTP bleiben unverändert; eine neue Anmeldung ist sofort möglich.
+_Avoid_: Logout, Abmelden, Session-Kill
+
+**TOTP-Zurücksetzung**:
+Das Entfernen von TOTP und Recovery-Codes eines Kontos durch die Verwaltung, etwa nach Verlust des Geräts; sie schließt einen Sitzungswiderruf ein. Gilt für das Konto eine MFA-Pflicht, richtet es TOTP bei der nächsten Anmeldung neu ein. Die eigene TOTP-Zurücksetzung über die Verwaltung gibt es nicht.
+_Avoid_: MFA-Reset, 2FA löschen
+
 **Einladungscode**:
 Ein kurzer, einmal angezeigter Code, mit dem eine Person ohne E-Mail-Adresse ihre Einladung annimmt; er wird auf einer ausgedruckten Einladungskarte (Text und QR-Code) weitergegeben. Eine erneute Einladung macht ihn ungültig.
 _Avoid_: PIN, Zugangscode, Passwort

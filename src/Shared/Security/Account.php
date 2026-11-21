@@ -9,8 +9,7 @@ final class Account
     /**
      * @param int|null $sessionsValidAfter Unix-Zeit: Tokens mit `iat` bis einschliesslich dieser Zeit sind widerrufen (ADR 0002 B2); null = keine Grenze
      * @param int|null $inactiveSince Unix-Zeit der Deaktivierung
-     * @param bool $loginSyncPending "Abgleich offen": die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42)
-     * @param string|null $loginSyncError Code, mit dem der Anmeldedienst den Abgleich fachlich abgelehnt hat (z. B. `user_not_found`); null bei Nichterreichbarkeit oder ohne offenen Abgleich
+     * @param list<OpenCall> $openCalls "Abgleich offen": die dem Anmeldedienst noch nicht gemeldeten Aufrufe dieses Kontos (Ticket #47), ungeordnet; die feste Reihenfolge kennt {@see OpenCalls}
      */
     public function __construct(
         public readonly string $publicUserId,
@@ -21,8 +20,7 @@ final class Account
         public readonly ?int $sessionsValidAfter = null,
         public readonly ?int $inactiveSince = null,
         public readonly ?InactiveReason $inactiveReason = null,
-        public readonly bool $loginSyncPending = false,
-        public readonly ?string $loginSyncError = null,
+        public readonly array $openCalls = [],
     ) {
     }
 
@@ -31,10 +29,21 @@ final class Account
         return $this->status === AccountStatus::Active;
     }
 
-    /** "Abgleich offen": ein deaktiviertes Konto, dessen Deaktivierung dem Anmeldedienst noch nicht gemeldet ist (Ticket #42). */
+    /** Der offene Aufruf $operation dieses Kontos oder null, wenn er nicht offen ist (Ticket #47). */
+    public function openCall(string $operation): ?OpenCall
+    {
+        foreach ($this->openCalls as $call) {
+            if ($call->operation === $operation) {
+                return $call;
+            }
+        }
+        return null;
+    }
+
+    /** "Abgleich offen" der Sperre: ein deaktiviertes Konto, dessen Deaktivierung dem Anmeldedienst noch nicht gemeldet ist (Ticket #42). */
     public function awaitsLoginSync(): bool
     {
-        return $this->status === AccountStatus::Inactive && $this->loginSyncPending;
+        return $this->status === AccountStatus::Inactive && $this->openCall(DisableLoginCall::OPERATION) !== null;
     }
 
     /**
