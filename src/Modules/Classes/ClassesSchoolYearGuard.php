@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace TeacherOS\Modules\Classes;
 
 use Hoelzle\Core\Database\DB;
+use TeacherOS\Modules\SchoolYears\SchoolYear;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuard;
 use TeacherOS\Modules\SchoolYears\SchoolYearObjection;
-use TeacherOS\Modules\SchoolYears\SchoolYearPeriod;
+use TeacherOS\Modules\SchoolYears\SchoolYearSpan;
 
 /**
  * Einwand der Klassen gegen das Loeschen eines Schuljahres (Ticket #56): Ein Schuljahr mit Klassen bleibt dauerhaft
@@ -19,15 +20,15 @@ final class ClassesSchoolYearGuard implements SchoolYearGuard
 {
     public const CODE = 'school_year_has_classes';
 
-    public function objectionToUpdate(array $year, SchoolYearPeriod $newPeriod): ?SchoolYearObjection
+    public function objectionToUpdate(SchoolYear $year, SchoolYearSpan $newSpan): ?SchoolYearObjection
     {
         return null;
     }
 
-    public function objectionToDeletion(array $year): ?SchoolYearObjection
+    public function objectionToDeletion(SchoolYear $year): ?SchoolYearObjection
     {
         $stmt = DB::getInstance()->prepare('SELECT 1 FROM `classes` WHERE `school_year_id` = :year LIMIT 1');
-        $stmt->execute(['year' => $year['id']]);
+        $stmt->execute(['year' => $year->id]);
         if ($stmt->fetchColumn() === false) {
             return null;
         }

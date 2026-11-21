@@ -102,7 +102,7 @@ final class FirstSchuladminCliTest extends TestCase
 
         $this->assertSame(200, $r['status']);
         $this->assertSame('active', $r['json']['account']['status']);
-        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'], $r['json']['permissions']);
+        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage', 'subjects.view', 'subjects.manage', 'school_settings.manage', 'teaching_groups.view', 'teaching_groups.manage'], $r['json']['permissions']);
         $this->assertSame('active', $this->app->accounts()[0]['status']);
         $this->assertSame(['account.invited', 'role.assigned', 'account.activated'], $this->auditActions());
         $activated = $this->app->auditLog()[2];

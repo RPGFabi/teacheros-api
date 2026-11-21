@@ -15,12 +15,20 @@ use TeacherOS\Modules\Classes\ClassesModule;
 use TeacherOS\Modules\Classes\ClassLinkGuard;
 use TeacherOS\Modules\Classes\ClassLinkGuards;
 use TeacherOS\Modules\Classes\ClassRoutes;
+use TeacherOS\Modules\SchoolYears\SchoolYear;
+use TeacherOS\Modules\SchoolSettings\SchoolLimits;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuard;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
 use TeacherOS\Modules\SchoolYears\SchoolYearObjection;
-use TeacherOS\Modules\SchoolYears\SchoolYearPeriod;
+use TeacherOS\Modules\SchoolYears\SchoolYearSpan;
 use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Modules\SchoolYears\SchoolYearsModule;
+use TeacherOS\Modules\Subjects\SubjectLinkGuard;
+use TeacherOS\Modules\Subjects\SubjectLinkGuards;
+use TeacherOS\Modules\Subjects\SubjectRoutes;
+use TeacherOS\Modules\Subjects\SubjectsModule;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupRoutes;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupsModule;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 use TeacherOS\Shared\Modules\ModuleCatalog;
 use TeacherOS\Shared\Modules\ModuleGate;
@@ -34,14 +42,14 @@ use TeacherOS\Shared\Security\RequirePermission;
  */
 final class TestSchoolYearGuard implements SchoolYearGuard
 {
-    public function objectionToUpdate(array $year, SchoolYearPeriod $newPeriod): ?SchoolYearObjection
+    public function objectionToUpdate(SchoolYear $year, SchoolYearSpan $newSpan): ?SchoolYearObjection
     {
-        return $this->blocked($year['id'], 'update') ? new SchoolYearObjection('test_update_blocked', 'Test: Aendern gesperrt.') : null;
+        return $this->blocked($year->id, 'update') ? new SchoolYearObjection('test_update_blocked', 'Test: Aendern gesperrt.') : null;
     }
 
-    public function objectionToDeletion(array $year): ?SchoolYearObjection
+    public function objectionToDeletion(SchoolYear $year): ?SchoolYearObjection
     {
-        return $this->blocked($year['id'], 'delete') ? new SchoolYearObjection('test_delete_blocked', 'Test: Loeschen gesperrt.') : null;
+        return $this->blocked($year->id, 'delete') ? new SchoolYearObjection('test_delete_blocked', 'Test: Loeschen gesperrt.') : null;
     }
 
     private function blocked(string $schoolYearId, string $action): bool
@@ -71,6 +79,25 @@ final class TestClassLinkGuard implements ClassLinkGuard
     }
 }
 
+/**
+ * Test-Verknuepfung fuer den Erweiterungspunkt der Faecher (Ticket #63), wie es spaeter die Fachgruppen tun: verknuepft ist,
+ * was in `test_subject_links` steht (`HttpTestApp::linkSubject`).
+ */
+final class TestSubjectLinkGuard implements SubjectLinkGuard
+{
+    public function label(): string
+    {
+        return 'Testverknüpfung';
+    }
+
+    public function isLinked(string $subjectId): bool
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_subject_links` WHERE `subject_id` = :id');
+        $stmt->execute(['id' => $subjectId]);
+        return $stmt->fetchColumn() !== false;
+    }
+}
+
 return static function (ApiRouter $router, ExtensionPoints $points): void {
     $router->get(
         '/api/test/observe-probe',
@@ -84,8 +111,25 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
     // Modulpruefung vor den Rechten laeuft. Mit den Diensten der Anwendung, also denselben Erweiterungspunkten.
     SchoolYearRoutes::register($router, (new SchoolYearsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-school-years');
     ClassRoutes::register($router, (new ClassesModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-classes');
+    SubjectRoutes::register($router, (new SubjectsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-subjects');
+    TeachingGroupRoutes::register($router, (new TeachingGroupsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-teaching-groups');
 
-    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57).
+    // Stellvertretend fuer ein spaeteres Zuordnungs-Modul (#67, #68): liest die Obergrenzen der Schuleinstellungen
+    // ausschliesslich ueber den Dienst SchoolLimits, ohne deren Speicherung zu kennen.
+    $router->get(
+        '/api/test/school-limits',
+        static function (Request $request, Response $response): void {
+            $limits = new SchoolLimits();
+            $response->json([
+                'max_teachers_per_teaching_group' => $limits->maxTeachersPerTeachingGroup(),
+                'max_class_leaders_per_class' => $limits->maxClassLeadersPerClass(),
+            ]);
+        },
+        ModuleGate::route(ModuleCatalog::CORE, [RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]),
+    );
+
+    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57, #63).
     $points->get(SchoolYearGuards::class)->register(new TestSchoolYearGuard());
     $points->get(ClassLinkGuards::class)->register(new TestClassLinkGuard());
+    $points->get(SubjectLinkGuards::class)->register(new TestSubjectLinkGuard());
 };

@@ -6,6 +6,7 @@ namespace TeacherOS\Modules\Classes;
 
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
+use TeacherOS\Modules\SchoolYears\SchoolYear;
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Security\AuthenticationMiddleware;
 
@@ -25,7 +26,7 @@ final class ClassesController
         if (!is_string($schoolYearId) || $schoolYearId === '') {
             throw new CodedException('invalid_request', 400, 'Bitte das Schuljahr angeben (school_year_id).');
         }
-        $response->json(['classes' => $this->classes->listIn($schoolYearId, self::flag($request->getQuery('include_archived')))]);
+        $response->json(['classes' => self::arrays($this->classes->listIn($schoolYearId, self::flag($request->getQuery('include_archived'))))]);
     }
 
     /** Nur waehlbare Klassen (ohne archivierte), eines Schuljahres (school_year_id) oder aller Schuljahre. */
@@ -35,18 +36,18 @@ final class ClassesController
         if ($schoolYearId !== null && (!is_string($schoolYearId) || $schoolYearId === '')) {
             throw new CodedException('invalid_request', 400, 'Bitte eine gültige Schuljahr-Kennung angeben (school_year_id).');
         }
-        $response->json(['classes' => $this->classes->selectable($schoolYearId)]);
+        $response->json(['classes' => self::arrays($this->classes->selectable($schoolYearId))]);
     }
 
     public function schoolYears(Request $request, Response $response): void
     {
-        $response->json(['school_years' => $this->classes->schoolYears()]);
+        $response->json(['school_years' => array_map(static fn (SchoolYear $year): array => $year->toArray(), $this->classes->schoolYears())]);
     }
 
     public function create(Request $request, Response $response): void
     {
         $input = ClassInput::fromInput($request->getBody('school_year_id'), $request->getBody('grade_level'), $request->getBody('name'));
-        $response->json(['class' => $this->classes->create(AuthenticationMiddleware::actor(), $input)], 201);
+        $response->json(['class' => $this->classes->create(AuthenticationMiddleware::actor(), $input)->toArray()], 201);
     }
 
     public function update(Request $request, Response $response): void
@@ -58,17 +59,17 @@ final class ClassesController
             $request->getBody('name'),
             $request->getBody('school_year_id'),
         );
-        $response->json(['class' => $class]);
+        $response->json(['class' => $class->toArray()]);
     }
 
     public function archive(Request $request, Response $response): void
     {
-        $response->json(['class' => $this->classes->archive(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))]);
+        $response->json(['class' => $this->classes->archive(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))->toArray()]);
     }
 
     public function restore(Request $request, Response $response): void
     {
-        $response->json(['class' => $this->classes->restore(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))]);
+        $response->json(['class' => $this->classes->restore(AuthenticationMiddleware::actor(), (string) $request->getParam('id'))->toArray()]);
     }
 
     public function delete(Request $request, Response $response): void
@@ -76,6 +77,15 @@ final class ClassesController
         $id = (string) $request->getParam('id');
         $this->classes->delete(AuthenticationMiddleware::actor(), $id);
         $response->json(['deleted' => true, 'id' => $id]);
+    }
+
+    /**
+     * @param list<SchoolClass> $classes
+     * @return list<array{id:string,grade_level:int,name:string,archived:bool,school_year:array{id:string,name:string}}>
+     */
+    private static function arrays(array $classes): array
+    {
+        return array_map(static fn (SchoolClass $class): array => $class->toArray(), $classes);
     }
 
     /** Filter wie `include_archived=1` oder `=true`; alles andere (auch fehlend) ist aus. */

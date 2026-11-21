@@ -6,25 +6,25 @@ namespace TeacherOS\Tests\SchoolYears;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use TeacherOS\Modules\SchoolYears\SchoolYearPeriod;
+use TeacherOS\Modules\SchoolYears\SchoolYearSpan;
 use TeacherOS\Shared\Exceptions\CodedException;
 
 /** Zeitraum und Bezeichnung des Schuljahres (Ticket #54): Kalendertage, Ende im Folgejahr, Bezeichnung "JJJJ/JJ". */
-final class SchoolYearPeriodTest extends TestCase
+final class SchoolYearSpanTest extends TestCase
 {
     public function testBezeichnungAusJahrDesBeginnsUndLetztenZweiZiffernDesEndjahres(): void
     {
-        $period = SchoolYearPeriod::fromStrings('2026-09-14', '2027-07-29');
+        $span = SchoolYearSpan::fromStrings('2026-09-14', '2027-07-29');
 
-        $this->assertSame('2026/27', $period->name());
-        $this->assertSame('2026-09-14', $period->startsOn);
-        $this->assertSame('2027-07-29', $period->endsOn);
+        $this->assertSame('2026/27', $span->name());
+        $this->assertSame('2026-09-14', $span->startsOn);
+        $this->assertSame('2027-07-29', $span->endsOn);
     }
 
     public function testBezeichnungBehaeltFuehrendeNullBeimJahrhundertwechsel(): void
     {
-        $this->assertSame('2099/00', SchoolYearPeriod::fromStrings('2099-08-01', '2100-07-31')->name());
-        $this->assertSame('2008/09', SchoolYearPeriod::fromStrings('2008-08-01', '2009-07-31')->name());
+        $this->assertSame('2099/00', SchoolYearSpan::fromStrings('2099-08-01', '2100-07-31')->name());
+        $this->assertSame('2008/09', SchoolYearSpan::fromStrings('2008-08-01', '2009-07-31')->name());
     }
 
     /** @return iterable<string,array{string,string}> */
@@ -39,7 +39,7 @@ final class SchoolYearPeriodTest extends TestCase
     #[DataProvider('gueltigeGrenzfaelle')]
     public function testEndeImKalenderjahrNachDemBeginnIstGueltig(string $start, string $end): void
     {
-        $this->assertSame($end, SchoolYearPeriod::fromStrings($start, $end)->endsOn);
+        $this->assertSame($end, SchoolYearSpan::fromStrings($start, $end)->endsOn);
     }
 
     /** @return iterable<string,array{string,string}> */
@@ -55,7 +55,7 @@ final class SchoolYearPeriodTest extends TestCase
     public function testEndeAusserhalbDesFolgejahresWirdMit422InvalidPeriodAbgelehnt(string $start, string $end): void
     {
         try {
-            SchoolYearPeriod::fromStrings($start, $end);
+            SchoolYearSpan::fromStrings($start, $end);
             $this->fail('Erwartet: invalid_period');
         } catch (CodedException $e) {
             $this->assertSame('invalid_period', $e->errorCode);
@@ -80,7 +80,7 @@ final class SchoolYearPeriodTest extends TestCase
     public function testKeinGueltigerKalendertagWirdMit400InvalidRequestAbgelehnt(mixed $start, mixed $end): void
     {
         try {
-            SchoolYearPeriod::fromInput($start, $end);
+            SchoolYearSpan::fromInput($start, $end);
             $this->fail('Erwartet: invalid_request');
         } catch (CodedException $e) {
             $this->assertSame('invalid_request', $e->errorCode);

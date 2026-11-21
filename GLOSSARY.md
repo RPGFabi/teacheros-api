@@ -78,6 +78,10 @@ _Avoid_: Feature, Plugin, Paket
 Die Festlegung, ob ein Modul an einer Schulinstanz ab einem Zeitpunkt läuft. Sie wird lokal gespeichert, nie überschrieben, sondern um eine neue Version mit Gültigkeitsbeginn ergänzt, und vom Betreiber gesetzt, nicht von der Schule. Eine Modulfreigabe gewährt kein Recht und keinen Zugriff auf Objekte.
 _Avoid_: Lizenz, Feature-Flag, Entitlement, Aktivierung
 
+**Schuleinstellung**:
+Ein Wert, den die Schule selbst für ihre ganze Schulinstanz festlegt, gleich für alle Schuljahre (z. B. wie viele Lehrkräfte eine Fachgruppe höchstens zugleich hat). Wird ein Wert verschärft, bleibt Bestehendes unberührt; die Regel gilt nur für Neues. Anders als die Modulfreigabe setzt sie die Schule, nicht der Betreiber.
+_Avoid_: Konfiguration, Setting, Option
+
 ## Stammdaten
 
 **Schuljahr**:
@@ -92,6 +96,30 @@ _Avoid_: Stammklasse, Lerngruppe, Kurs
 Die Stufe einer Klasse innerhalb der Schullaufbahn (z. B. 7). Sie wird bei der Klasse festgehalten und nie aus der Bezeichnung gelesen oder beim Schuljahreswechsel einfach hochgezählt.
 _Avoid_: Jahrgang, Stufe, Niveau
 
+**Fach**:
+Ein Unterrichtsfach der Schulinstanz (z. B. Mathematik), unabhängig vom Schuljahr. Kürzel (z. B. „M“) und Bezeichnung werden beim Anlegen vergeben; das Kürzel ist an der Schulinstanz eindeutig und danach unveränderlich, die Bezeichnung bleibt änderbar.
+_Avoid_: Unterrichtsfach, Kurs, Lernbereich
+
+**Fachgruppe**:
+Eine Schülergruppe, die in genau einem Schuljahr in genau einem Fach gemeinsam unterrichtet und bewertet wird, gebildet aus Schülerinnen und Schülern einer oder mehrerer Klassen desselben Schuljahres (z. B. „AES 1“ und „AES 2“ aus 7a–7c). Die Bezeichnung ist frei gewählt und innerhalb des Schuljahres eindeutig.
+_Avoid_: Kurs, Lerngruppe, Teilgruppe
+
+**Lehrkraft**:
+Ein Konto mit der Standardrolle Lehrkraft; eigene Rollen machen ein Konto nicht zur Lehrkraft. Zugeordnet werden kann eine Lehrkraft, solange ihr Konto nicht deaktiviert ist. Wird ihr die Rolle entzogen oder das Konto deaktiviert, bleiben ihre bisherigen Zuordnungen als Historie bestehen. Sobald es Personen für Lehrkräfte gibt, hängt die Zuordnung an der Person statt am Konto.
+_Avoid_: Lehrer/in, LK, Personal
+
+**Lehrkraft-Zuordnung**:
+Die Festlegung, dass eine Lehrkraft für einen Gültigkeitszeitraum eine Fachgruppe unterrichtet. Mehrere Lehrkräfte können zugleich derselben Fachgruppe zugeordnet sein, dieselbe Lehrkraft aber nicht mit sich überschneidenden Zeiträumen. Was schon gegolten hat, wird beendet, nie gelöscht oder rückwirkend verändert; nur eine Zuordnung, die noch nie gegolten hat, darf gelöscht werden.
+_Avoid_: Lehrauftrag, Zuweisung, Unterrichtsverteilung
+
+**Klassenleitung**:
+Die Lehrkraft-Zuordnung einer Lehrkraft zu einer Klasse statt zu einer Fachgruppe, mit denselben Regeln für Gültigkeitszeitraum und Historie. Eine Klasse kann zugleich mehrere Klassenleitungen haben.
+_Avoid_: Klassenlehrer/in, Stammklassenleitung
+
+**Gültigkeitszeitraum**:
+Die Kalendertage vom ersten bis einschließlich zum letzten Tag, an denen eine Zuordnung gilt; ein offenes Ende heißt „bis zum Ende des Schuljahres“. Der Zeitraum liegt immer innerhalb des Schuljahres der Fachgruppe bzw. Klasse.
+_Avoid_: Laufzeit, Periode, Zeitraum
+
 **Archivierung**:
-Eine Klasse, an der bereits etwas hängt, wird archiviert statt gelöscht: Sie bleibt mit ihrer Historie lesbar und ihre Bezeichnung belegt, ist aber für neue Zuordnungen nicht mehr wählbar. Sie lässt sich wiederherstellen. Nur was noch nirgends verknüpft ist, wird endgültig gelöscht.
+Eine Klasse, ein Fach oder eine Fachgruppe, an der bereits etwas hängt, wird archiviert statt gelöscht: Sie bleibt mit ihrer Historie lesbar und ihre Bezeichnung bzw. ihr Kürzel belegt, ist aber für neue Zuordnungen nicht mehr wählbar. Sie lässt sich wiederherstellen. Nur was noch nirgends verknüpft ist, wird endgültig gelöscht.
 _Avoid_: Deaktivierung, Soft Delete, Ausblenden
