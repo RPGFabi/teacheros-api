@@ -26,6 +26,8 @@ final class PermissionCatalog
     public const SCHOOL_YEARS_MANAGE = 'school_years.manage';
     public const CLASSES_VIEW = 'classes.view';
     public const CLASSES_MANAGE = 'classes.manage';
+    public const SUBJECTS_VIEW = 'subjects.view';
+    public const SUBJECTS_MANAGE = 'subjects.manage';
 
     /**
      * Die drei Verwaltungsrechte (ADR 0002 B4). Wer eines hat, darf Rollen, Rechte-Katalog und
@@ -70,6 +72,8 @@ final class PermissionCatalog
             ['key' => self::SCHOOL_YEARS_MANAGE, 'name' => 'Schuljahre verwalten', 'group' => self::GROUP_MASTER_DATA],
             ['key' => self::CLASSES_VIEW, 'name' => 'Klassen ansehen', 'group' => self::GROUP_MASTER_DATA],
             ['key' => self::CLASSES_MANAGE, 'name' => 'Klassen verwalten', 'group' => self::GROUP_MASTER_DATA],
+            ['key' => self::SUBJECTS_VIEW, 'name' => 'Fächer ansehen', 'group' => self::GROUP_MASTER_DATA],
+            ['key' => self::SUBJECTS_MANAGE, 'name' => 'Fächer verwalten', 'group' => self::GROUP_MASTER_DATA],
         ];
     }
 
