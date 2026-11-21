@@ -11,6 +11,8 @@ use Hoelzle\Core\Database\DB;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Bootstrap\ApiRouter;
+use TeacherOS\Modules\ClassLeaders\ClassLeaderRoutes;
+use TeacherOS\Modules\ClassLeaders\ClassLeadersModule;
 use TeacherOS\Modules\Classes\ClassesModule;
 use TeacherOS\Modules\Classes\ClassLinkGuard;
 use TeacherOS\Modules\Classes\ClassLinkGuards;
@@ -165,6 +167,15 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
         (new TeacherAssignmentsModule())->controller($points, is_string($today) && $today !== '' ? new FixedClock($today) : new \TeacherOS\Shared\Clock\SystemClock()),
         ModuleCatalog::CORE,
         '/api/test/dated-teacher-assignments',
+    );
+
+    // Klassenleitung (Ticket #68): wie die Lehrkraft-Zuordnung unter `observe` und, unter `core`, mit der Test-Uhr (TEST_TODAY).
+    ClassLeaderRoutes::register($router, (new ClassLeadersModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-class-leaders');
+    ClassLeaderRoutes::register(
+        $router,
+        (new ClassLeadersModule())->controller($points, is_string($today) && $today !== '' ? new FixedClock($today) : new \TeacherOS\Shared\Clock\SystemClock()),
+        ModuleCatalog::CORE,
+        '/api/test/dated-class-leaders',
     );
 
     // Stellvertretend fuer ein spaeteres Zuordnungs-Modul (#67, #68): liest die Obergrenzen der Schuleinstellungen
