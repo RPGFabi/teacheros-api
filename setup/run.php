@@ -15,7 +15,7 @@ Config::load();
 $runner = new SetupRunner(new SetupRunnerConfig(
     setupDir: __DIR__,
     logFile: dirname(__DIR__) . '/debug/setup.log',
-    allowedModes: ['migrate'],
+    allowedModes: ['migrate', 'seed'],
     defaultMode: 'migrate',
     ensureDatabase: true,
 ));

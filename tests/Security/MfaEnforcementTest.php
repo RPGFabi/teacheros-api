@@ -267,12 +267,12 @@ final class MfaEnforcementTest extends TestCase
         $pdo->exec('ALTER TABLE `accounts` DROP COLUMN `mfa_sync_pending`');
         $pdo->prepare('UPDATE `accounts` SET `mfa_required` = 1 WHERE `public_user_id` = ?')->execute([self::TARGET]);
 
-        $this->app->rerunMigrations('0012_account_mfa_sync_pending.php');
+        $this->app->rerunMigrations('0017_account_mfa_sync_pending.php');
         $this->assertSame(1, (int) $this->row(self::TARGET)['mfa_sync_pending']);
         $this->assertSame(0, (int) $this->row(self::OTHER)['mfa_sync_pending']);
 
         $pdo->exec('UPDATE `accounts` SET `mfa_sync_pending` = 0');
-        $this->app->rerunMigrations('0012_account_mfa_sync_pending.php');
+        $this->app->rerunMigrations('0017_account_mfa_sync_pending.php');
         $this->assertSame(0, (int) $this->row(self::TARGET)['mfa_sync_pending'], 'Wiederholung markiert nicht erneut');
     }
 }

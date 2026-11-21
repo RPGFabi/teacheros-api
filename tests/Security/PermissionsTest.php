@@ -37,7 +37,7 @@ final class PermissionsTest extends TestCase
         $r = $this->me();
 
         $this->assertSame(200, $r['status']);
-        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign'], $r['json']['permissions']);
+        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'], $r['json']['permissions']);
         $this->assertNotContains('*', $r['json']['permissions']);
     }
 
@@ -60,6 +60,6 @@ final class PermissionsTest extends TestCase
 
         $this->assertSame(1, (int) $this->app->pdo()->query("SELECT COUNT(*) FROM `permission_roles` WHERE `role_key` = 'schuladmin'")->fetchColumn());
         $this->assertSame(['*'], $this->app->pdo()->query("SELECT p.`permission` FROM `permission_role_permissions` p JOIN `permission_roles` r ON r.`id` = p.`role_id` WHERE r.`role_key` = 'schuladmin'")->fetchAll(\PDO::FETCH_COLUMN));
-        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign'], $this->me()['json']['permissions']);
+        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'accounts.revoke_sessions', 'accounts.reset_mfa', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'], $this->me()['json']['permissions']);
     }
 }

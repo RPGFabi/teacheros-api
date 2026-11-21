@@ -309,7 +309,7 @@ final class DisableLoginCallTest extends TestCase
         $this->stub->script('disable-login', $this->rejection());
         $this->deactivate();
 
-        $this->app->rerunMigrations('0013_account_open_calls.php');
+        $this->app->rerunMigrations('0018_account_open_calls.php');
 
         $this->assertSame(['disable_login' => 'user_not_found'], $this->app->openCalls(self::TARGET));
     }
@@ -329,7 +329,7 @@ final class DisableLoginCallTest extends TestCase
         $this->app->createAccount(self::MANAGER, 'inactive', 'andere@schule.test');
         $pdo->exec("UPDATE `accounts` SET `login_sync_pending` = 1, `login_sync_error` = 'user_not_found', `inactive_reason` = 'admin_locked' WHERE `public_user_id` = '" . self::MANAGER . "'");
 
-        $this->app->rerunMigrations('0013_account_open_calls.php');
+        $this->app->rerunMigrations('0018_account_open_calls.php');
 
         $this->assertSame(['disable_login' => 'user_not_found'], $this->app->openCalls(self::MANAGER));
         $this->assertSame([], $this->app->openCalls(self::TARGET), 'ein Konto ohne offene Markierung bekommt keinen Aufruf');
@@ -342,11 +342,11 @@ final class DisableLoginCallTest extends TestCase
         $pdo = $this->legacyColumnsWithoutTable();
         $this->app->createAccount(self::MANAGER, 'inactive', 'andere@schule.test');
         $pdo->exec("UPDATE `accounts` SET `login_sync_pending` = 1, `inactive_reason` = 'admin_locked' WHERE `public_user_id` = '" . self::MANAGER . "'");
-        $this->app->rerunMigrations('0013_account_open_calls.php');
+        $this->app->rerunMigrations('0018_account_open_calls.php');
         $this->assertSame(['disable_login' => null], $this->app->openCalls(self::MANAGER));
         $pdo->exec("DELETE FROM `account_open_calls` WHERE `account_id` = '" . self::MANAGER . "'"); // der Abgleich ist gelungen; die alte Spalte steht noch auf 1
 
-        $this->app->rerunMigrations('0013_account_open_calls.php');
+        $this->app->rerunMigrations('0018_account_open_calls.php');
 
         $this->assertSame([], $this->app->openCalls(self::MANAGER), 'die veraltete Spalte darf den erledigten Aufruf nicht wiederbeleben');
     }
