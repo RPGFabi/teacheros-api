@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace TeacherOS\Tests\SchoolYears;
 
 use PHPUnit\Framework\TestCase;
+use TeacherOS\Modules\SchoolYears\SchoolYear;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuard;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
 use TeacherOS\Modules\SchoolYears\SchoolYearObjection;
-use TeacherOS\Modules\SchoolYears\SchoolYearPeriod;
+use TeacherOS\Modules\SchoolYears\SchoolYearStatus;
+use TeacherOS\Modules\SchoolYears\SchoolYearSpan;
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 
@@ -18,8 +20,6 @@ use TeacherOS\Shared\Extension\ExtensionPoints;
  */
 final class SchoolYearGuardsTest extends TestCase
 {
-    private const YEAR = ['id' => 'sy-1', 'name' => '2026/27', 'starts_on' => '2026-09-14', 'ends_on' => '2027-07-29', 'status' => 'upcoming'];
-
     /** @param list<array<int,string>> $asked fuellt sich mit den Fragen, die der Waechter bekommt */
     private static function guard(?SchoolYearObjection $update, ?SchoolYearObjection $deletion, array &$asked = []): SchoolYearGuard
     {
@@ -29,23 +29,28 @@ final class SchoolYearGuardsTest extends TestCase
             {
             }
 
-            public function objectionToUpdate(array $year, SchoolYearPeriod $newPeriod): ?SchoolYearObjection
+            public function objectionToUpdate(SchoolYear $year, SchoolYearSpan $newSpan): ?SchoolYearObjection
             {
-                $this->asked[] = ['update', $year['id'], $newPeriod->name()];
+                $this->asked[] = ['update', $year->id, $newSpan->name()];
                 return $this->update;
             }
 
-            public function objectionToDeletion(array $year): ?SchoolYearObjection
+            public function objectionToDeletion(SchoolYear $year): ?SchoolYearObjection
             {
-                $this->asked[] = ['delete', $year['id']];
+                $this->asked[] = ['delete', $year->id];
                 return $this->deletion;
             }
         };
     }
 
-    private static function period(string $start = '2026-09-14', string $end = '2027-07-29'): SchoolYearPeriod
+    private static function year(): SchoolYear
     {
-        return SchoolYearPeriod::fromStrings($start, $end);
+        return new SchoolYear('sy-1', '2026/27', '2026-09-14', '2027-07-29', SchoolYearStatus::Upcoming);
+    }
+
+    private static function span(string $start = '2026-09-14', string $end = '2027-07-29'): SchoolYearSpan
+    {
+        return SchoolYearSpan::fromStrings($start, $end);
     }
 
     /** Code und Meldung der Ablehnung (409) oder null, wenn der Aufruf durchlaeuft. */
@@ -64,8 +69,8 @@ final class SchoolYearGuardsTest extends TestCase
     {
         $guards = new SchoolYearGuards();
 
-        $this->assertNull($this->rejection(fn () => $guards->assertUpdatable(self::YEAR, self::period())));
-        $this->assertNull($this->rejection(fn () => $guards->assertDeletable(self::YEAR)));
+        $this->assertNull($this->rejection(fn () => $guards->assertUpdatable(self::year(), self::span())));
+        $this->assertNull($this->rejection(fn () => $guards->assertDeletable(self::year())));
     }
 
     public function testEinEinwandWirdZu409MitCodeUndMeldung(): void
@@ -73,8 +78,8 @@ final class SchoolYearGuardsTest extends TestCase
         $guards = new SchoolYearGuards();
         $guards->register(self::guard(new SchoolYearObjection('a_update', 'Meldung A'), new SchoolYearObjection('a_delete', 'Meldung B')));
 
-        $this->assertSame('a_update|Meldung A', $this->rejection(fn () => $guards->assertUpdatable(self::YEAR, self::period('2026-09-15'))));
-        $this->assertSame('a_delete|Meldung B', $this->rejection(fn () => $guards->assertDeletable(self::YEAR)));
+        $this->assertSame('a_update|Meldung A', $this->rejection(fn () => $guards->assertUpdatable(self::year(), self::span('2026-09-15'))));
+        $this->assertSame('a_delete|Meldung B', $this->rejection(fn () => $guards->assertDeletable(self::year())));
     }
 
     public function testDerErsteEinwandInDerReihenfolgeDerAnmeldungGewinntUndDanachWirdNichtMehrGefragt(): void
@@ -85,8 +90,8 @@ final class SchoolYearGuardsTest extends TestCase
         $guards->register(self::guard(new SchoolYearObjection('zweiter', 'Z'), new SchoolYearObjection('zweiter_del', 'Z'), $askedSecond));
         $guards->register(self::guard(new SchoolYearObjection('dritter', 'D'), new SchoolYearObjection('dritter_del', 'D'), $askedThird));
 
-        $this->assertSame('zweiter|Z', $this->rejection(fn () => $guards->assertUpdatable(self::YEAR, self::period())));
-        $this->assertSame('zweiter_del|Z', $this->rejection(fn () => $guards->assertDeletable(self::YEAR)));
+        $this->assertSame('zweiter|Z', $this->rejection(fn () => $guards->assertUpdatable(self::year(), self::span())));
+        $this->assertSame('zweiter_del|Z', $this->rejection(fn () => $guards->assertDeletable(self::year())));
         $this->assertCount(2, $askedFirst, 'der erste Waechter wird gefragt');
         $this->assertCount(2, $askedSecond);
         $this->assertSame([], $askedThird, 'nach dem ersten Einwand fragt niemand weiter');
@@ -98,7 +103,7 @@ final class SchoolYearGuardsTest extends TestCase
         $guards = new SchoolYearGuards();
         $guards->register(self::guard(null, null, $asked));
 
-        $guards->assertUpdatable(self::YEAR, self::period('2027-09-01', '2028-07-31'));
+        $guards->assertUpdatable(self::year(), self::span('2027-09-01', '2028-07-31'));
 
         $this->assertSame([['update', 'sy-1', '2027/28']], $asked);
     }
@@ -110,7 +115,7 @@ final class SchoolYearGuardsTest extends TestCase
         $one->get(SchoolYearGuards::class)->register(self::guard(new SchoolYearObjection('x', 'X'), null));
 
         $this->assertSame($one->get(SchoolYearGuards::class), $one->get(SchoolYearGuards::class), 'je Anwendung eine Instanz');
-        $this->assertSame('x|X', $this->rejection(fn () => $one->get(SchoolYearGuards::class)->assertUpdatable(self::YEAR, self::period())));
-        $this->assertNull($this->rejection(fn () => $other->get(SchoolYearGuards::class)->assertUpdatable(self::YEAR, self::period())), 'eine andere Anwendung sieht die Anmeldung nicht');
+        $this->assertSame('x|X', $this->rejection(fn () => $one->get(SchoolYearGuards::class)->assertUpdatable(self::year(), self::span())));
+        $this->assertNull($this->rejection(fn () => $other->get(SchoolYearGuards::class)->assertUpdatable(self::year(), self::span())), 'eine andere Anwendung sieht die Anmeldung nicht');
     }
 }
