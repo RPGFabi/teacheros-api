@@ -102,7 +102,7 @@ final class FirstSchuladminCliTest extends TestCase
 
         $this->assertSame(200, $r['status']);
         $this->assertSame('active', $r['json']['account']['status']);
-        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'roles.manage', 'roles.assign', 'permissions.assign'], $r['json']['permissions']);
+        $this->assertEqualsCanonicalizing(['accounts.view', 'accounts.invite', 'accounts.deactivate', 'roles.manage', 'roles.assign', 'permissions.assign', 'school_years.view', 'school_years.manage', 'classes.view', 'classes.manage'], $r['json']['permissions']);
         $this->assertSame('active', $this->app->accounts()[0]['status']);
         $this->assertSame(['account.invited', 'role.assigned', 'account.activated'], $this->auditActions());
         $activated = $this->app->auditLog()[2];
@@ -365,15 +365,15 @@ final class FirstSchuladminCliTest extends TestCase
     {
         $this->stub->script('invite', ['body' => [
             'ok' => true, 'public_user_id' => '77777777-7777-4777-8777-777777777777', 'created' => true, 'already_active' => false,
-            'username' => 'schueler.eins', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS', 'expires_at' => '2026-11-20T12:34:56Z',
+            'username' => 'schueler.eins', 'invite_code' => 'ABCD-EFGH-JKMN-PQRS', 'expires_at' => '2099-01-02T12:34:56Z',
         ]]);
 
         $r = $this->invite(['--login-name=schueler.eins']);
 
         $this->assertSame(0, $r['code'], $r['err']);
         $this->assertStringContainsString('ABCD-EFGH-JKMN-PQRS', $r['out']);
-        $this->assertStringContainsString('2026-11-20T12:34:56Z', $r['out']);
-        $this->assertStringNotContainsString('2026-11-20', json_encode([$this->app->accounts(), $this->app->auditLog()]), 'das Ablaufdatum wird nicht gespeichert');
+        $this->assertStringContainsString('2099-01-02T12:34:56Z', $r['out']);
+        $this->assertStringNotContainsString('2099-01-02', json_encode([$this->app->accounts(), $this->app->auditLog()]), 'das Ablaufdatum wird nicht gespeichert');
     }
 
     public function testAnmeldenameWirdAnDenAnmeldedienstWeitergegebenUndLokalGespeichert(): void

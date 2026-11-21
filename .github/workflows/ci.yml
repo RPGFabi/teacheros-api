@@ -30,6 +30,8 @@ jobs:
           php-version: "8.4"
           extensions: pdo_mysql, mbstring
           tools: composer
+          # Ohne Coverage-Erweiterung: Xdebug/PCOV schalten den JIT ab und php-cgi warnt bei jedem Request auf stderr.
+          coverage: none
       - run: composer install --no-interaction --prefer-dist
         env:
           # PHP-Core (und spaeter PHP-Permissions) sind private Repos; PAT mit Lesezugriff.

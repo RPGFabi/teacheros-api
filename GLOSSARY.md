@@ -59,3 +59,31 @@ _Avoid_: Admin, Administrator, Superuser
 **Audit-Eintrag**:
 Ein datensparsamer Nachweis einer administrativen oder sicherheitsrelevanten Handlung: wer, wann, welche Handlung, an welchem Objekt. Er enthält keine Kopie fachlicher Daten.
 _Avoid_: Log, Protokoll, History
+
+## Betrieb
+
+**Modul**:
+Ein abgegrenzter Produktbereich von TeacherOS mit fester Kennung (z. B. `observe` für Beobachtungen). `core` (Stammdaten, Konten, Rollen) gehört zu jeder Schulinstanz und ist immer aktiv.
+_Avoid_: Feature, Plugin, Paket
+
+**Modulfreigabe**:
+Die Festlegung, ob ein Modul an einer Schulinstanz ab einem Zeitpunkt läuft. Sie wird lokal gespeichert, nie überschrieben, sondern um eine neue Version mit Gültigkeitsbeginn ergänzt, und vom Betreiber gesetzt, nicht von der Schule. Eine Modulfreigabe gewährt kein Recht und keinen Zugriff auf Objekte.
+_Avoid_: Lizenz, Feature-Flag, Entitlement, Aktivierung
+
+## Stammdaten
+
+**Schuljahr**:
+Ein Zeitraum von einem ersten bis zu einem letzten Kalendertag, in dem die Schule ihren Unterricht organisiert. Schuljahre einer Schulinstanz überschneiden sich nie, dürfen aber Lücken haben. Die Bezeichnung (z. B. „2026/27“) ergibt sich aus dem Zeitraum. Ob ein Schuljahr _laufend_, _kommend_ oder _vergangen_ ist, folgt allein aus dem Datum und wird nie von Hand umgeschaltet. _Laufend_ ist das Schuljahr, in das der heutige Tag fällt, oder, wenn der heutige Tag in einer Lücke zwischen zwei Schuljahren liegt, das nächste kommende. Vor dem ersten Schuljahr ist keines laufend. Ein Schuljahr mit Klassen bleibt dauerhaft bestehen.
+_Avoid_: Jahr, Periode, Saison
+
+**Klasse**:
+Eine Schülergruppe mit Klassenstufe und Bezeichnung (z. B. Stufe 7, „7a“), die zu genau einem Schuljahr gehört; die Bezeichnung ist innerhalb des Schuljahres eindeutig. Dieselbe Bezeichnung im Folgejahr ist eine neue Klasse, nicht dieselbe Klasse ein Jahr später.
+_Avoid_: Stammklasse, Lerngruppe, Kurs
+
+**Klassenstufe**:
+Die Stufe einer Klasse innerhalb der Schullaufbahn (z. B. 7). Sie wird bei der Klasse festgehalten und nie aus der Bezeichnung gelesen oder beim Schuljahreswechsel einfach hochgezählt.
+_Avoid_: Jahrgang, Stufe, Niveau
+
+**Archivierung**:
+Eine Klasse, an der bereits etwas hängt, wird archiviert statt gelöscht: Sie bleibt mit ihrer Historie lesbar und ihre Bezeichnung belegt, ist aber für neue Zuordnungen nicht mehr wählbar. Sie lässt sich wiederherstellen. Nur was noch nirgends verknüpft ist, wird endgültig gelöscht.
+_Avoid_: Deaktivierung, Soft Delete, Ausblenden
