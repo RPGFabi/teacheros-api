@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TeacherOS\Shared\Security;
 
+use Hoelzle\Core\Application;
 use Hoelzle\Core\Config\Config;
 use Hoelzle\Core\Database\DB;
 use Hoelzle\Core\Routing\Request;
@@ -90,7 +91,9 @@ final class AuthenticationMiddleware
 
     private static function verifier(): AccessTokenVerifier
     {
+        // Ein relativer Pfad gilt ab dem App-Hauptordner, nicht ab dem Arbeitsverzeichnis (unter Apache ist das public/).
         $path = Config::getString('AUTH_PUBLIC_KEY_PATH', '');
+        $path = $path !== '' ? Application::resolvePath($path) : '';
         $pem = $path !== '' && is_file($path) ? (string) file_get_contents($path) : '';
         // Fehlende Konfiguration => leere Werte => jedes Token wird abgelehnt (fail-closed).
         return new AccessTokenVerifier($pem, Config::getString('AUTH_TOKEN_ISSUER', ''), Config::getString('AUTH_TOKEN_AUDIENCE', ''));
