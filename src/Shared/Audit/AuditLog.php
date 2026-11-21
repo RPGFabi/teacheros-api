@@ -75,6 +75,18 @@ final class AuditLog
     /** Eine Schuleinstellung wurde geaendert (Ticket #66); Objekt: Schluessel der Einstellung, Kontext: old_value (alter Wert; ohne gespeicherten Wert der Standard), value (neuer Wert). */
     public const SCHOOL_SETTING_UPDATED = 'school_setting.updated';
 
+    /** Die Bezeichnung eines Faches wurde geaendert (Ticket #63); Objekt: Kennung, Kontext: code (Kuerzel), old_name (alte Bezeichnung), name (neue Bezeichnung). */
+    public const SUBJECT_UPDATED = 'subject.updated';
+
+    /** Ein Fach wurde archiviert (Ticket #63); Objekt: Kennung, Kontext: code, name. */
+    public const SUBJECT_ARCHIVED = 'subject.archived';
+
+    /** Ein archiviertes Fach wurde wiederhergestellt (Ticket #63); Objekt: Kennung, Kontext: code, name. */
+    public const SUBJECT_RESTORED = 'subject.restored';
+
+    /** Ein unverknuepftes Fach wurde endgueltig geloescht (Ticket #63); Objekt: Kennung, Kontext: code, name. */
+    public const SUBJECT_DELETED = 'subject.deleted';
+
     /** @param array<string,scalar>|null $context */
     public function record(Actor $actor, string $action, string $objectType, string $objectId, ?array $context = null): void
     {

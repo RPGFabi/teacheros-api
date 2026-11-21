@@ -9,7 +9,7 @@ use TeacherOS\Bootstrap\ModuleRegistration;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 
 /**
- * Anmeldung der Faecher (Ticket #62): die Routen. Eigene Erweiterungspunkte hat das Modul noch nicht.
+ * Anmeldung der Faecher (Tickets #62, #63): die Routen. Der eigene Erweiterungspunkt {@see SubjectLinkGuards} gehoert diesem Modul; es reicht dieselbe Instanz an den Dienst weiter, bei der sich spaetere Module (Fachgruppen) anmelden.
  */
 final class SubjectsModule implements ModuleRegistration
 {
@@ -21,6 +21,6 @@ final class SubjectsModule implements ModuleRegistration
     /** Der Controller mit dem Dienst dieser Anwendung; auch fuer die Probe-Routen der Tests. */
     public function controller(ExtensionPoints $points): SubjectsController
     {
-        return new SubjectsController(new Subjects());
+        return new SubjectsController(new Subjects(linkGuards: $points->get(SubjectLinkGuards::class)));
     }
 }

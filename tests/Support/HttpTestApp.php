@@ -121,6 +121,8 @@ final class HttpTestApp
         }
         // Tabelle der Test-Verknuepfung von Klassen (tests/Support/module-probe-routes.php); kein Teil des Schemas.
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_class_links` (`class_id` char(36) NOT NULL PRIMARY KEY)');
+        // Ebenso fuer die Test-Verknuepfung von Faechern (Ticket #63).
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_subject_links` (`subject_id` char(36) NOT NULL PRIMARY KEY)');
         // Ebenso fuer die Test-Pruefung der Schuljahre: welche Aktion (update/delete) an welchem Schuljahr gesperrt ist.
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_school_year_blocks` (`school_year_id` char(36) NOT NULL, `action` varchar(10) NOT NULL, PRIMARY KEY (`school_year_id`, `action`))');
     }
@@ -207,7 +209,14 @@ final class HttpTestApp
     /** Entfernt alle Faecher (Testaufbau). */
     public function resetSubjects(): void
     {
+        $this->pdo()->exec('DELETE FROM `test_subject_links`');
         $this->pdo()->exec('DELETE FROM `subjects`');
+    }
+
+    /** Verknuepft ein Fach mit der Test-Verknuepfung (stellvertretend fuer ein spaeteres Modul wie die Fachgruppen). */
+    public function linkSubject(string $subjectId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_subject_links` (`subject_id`) VALUES (?)')->execute([$subjectId]);
     }
 
     /** @return list<array<string,mixed>> nach Anlegezeitpunkt */

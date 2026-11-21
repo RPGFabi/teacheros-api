@@ -324,19 +324,42 @@ Erstes Ticket der Fächer und Fachgruppen (Spec #18; Glossar: Fach). Ein Fach gi
 
 | Endpunkt | Recht | Body | Antwort |
 |---|---|---|---|
-| `GET /api/subjects` | `subjects.view` | – | `200 {"subjects": [{id, code, name}]}`, natürlich nach Kürzel sortiert (D1, d2, D10), Groß-/Kleinschreibung egal |
-| `GET /api/subjects/selectable` | `subjects.view` | – | wie die Liste: die für neue Zuordnungen wählbaren Fächer (vorerst alle) |
+| `GET /api/subjects` | `subjects.view` | – | `200 {"subjects": [{id, code, name, archived}]}` (seit #63 ohne archivierte, außer mit `include_archived=1`), natürlich nach Kürzel sortiert (D1, d2, D10), Groß-/Kleinschreibung egal |
+| `GET /api/subjects/selectable` | `subjects.view` | – | die Liste ohne archivierte Fächer: die für neue Zuordnungen wählbaren (seit Ticket #63) |
 | `POST /api/subjects` | `subjects.manage` | `{code, name}` | `201 {"subject": {id, code, name}}` |
 
-- **Kürzel** `code`: nach Unicode-bewusstem Trimmen und NFC 1 bis 10 Zeichen, ohne Leerraum im Inneren, nur Buchstaben (auch Umlaute), Ziffern, `-` und `_`. Die Schreibung bleibt wie eingegeben („Ev“ bleibt „Ev“). Eindeutig ohne Rücksicht auf Groß-/Kleinschreibung („Ev“ = „EV“), „Ü“ und „U“ sind verschiedene Zeichen. Nach dem Anlegen unveränderlich (es gibt keinen Bearbeiten-Weg).
+- **Kürzel** `code`: nach Unicode-bewusstem Trimmen und NFC 1 bis 10 Zeichen, ohne Leerraum im Inneren, nur Buchstaben (auch Umlaute), Ziffern, `-` und `_`. Die Schreibung bleibt wie eingegeben („Ev“ bleibt „Ev“). Eindeutig ohne Rücksicht auf Groß-/Kleinschreibung („Ev“ = „EV“), „Ü“ und „U“ sind verschiedene Zeichen. Nach dem Anlegen unveränderlich (Ticket #63: Bearbeiten ändert nur die Bezeichnung).
 - **Bezeichnung** `name`: 1 bis 60 Zeichen, getrimmt und NFC-normalisiert wie die Klassenbezeichnung (gemeinsame Regeln in `Shared\Text\Text`, von `ClassChange` und `SubjectInput` genutzt); muss nicht eindeutig sein.
 - **Fehler:** `400 invalid_request` (Kürzel oder Bezeichnung fehlt oder ist ungültig, mit verständlicher Meldung), `409 subject_code_taken` (Kürzel schon vergeben), `403 forbidden`, `401`; hinter nicht freigegebenem Modul `403 module_disabled` vor der Rechteprüfung.
 - **Speicherung:** Tabelle `subjects` (Migration 0019: `id` UUID, `code`, `code_key` = kleingeschriebenes Kürzel, binär verglichen, `name`; der eindeutige Schlüssel `code_key` sichert die Eindeutigkeit auch bei gleichzeitigen Anfragen, der Dienst übersetzt den Fehler 1062 in `subject_code_taken`). Die Migration ist gefahrlos wiederholbar (`IF NOT EXISTS`) und hängt nicht von ihrer Nummer ab. Anlegen und Audit laufen in einer Transaktion.
 - **Audit:** `subject.created` (Objekt `subject`, Objekt-ID = Kennung, Kontext nur `code` und `name`).
 - **Ausgabetyp:** Das Modul liefert `Subject` (`id`, `code`, `name`, `toArray()`/`JsonSerializable`) statt eines Array-Shapes; Eingaben prüft `SubjectInput`.
-- **Wählbare Fächer für spätere Zuordnungen (Fachgruppen, Tickets #63/#64):** `Subjects::selectable(): list<Subject>` beziehungsweise `GET /api/subjects/selectable`. Vorerst sind es alle Fächer; kommt später das Archivieren, filtert diese eine Stelle. Neue Zuordnungen dürfen nur solche Fächer verwenden.
+- **Wählbare Fächer für spätere Zuordnungen (Fachgruppen, Tickets #63/#64):** `Subjects::selectable(): list<Subject>` beziehungsweise `GET /api/subjects/selectable`. Seit Ticket #63 ohne archivierte Fächer (diese eine Stelle filtert). Neue Zuordnungen dürfen nur solche Fächer verwenden.
 - Code: `src/Modules/Subjects/` (`SubjectsModule`, `SubjectRoutes`, `SubjectsController`, `Subjects`, `SubjectRepository`, `SubjectInput`, `Subject`). Tests: `tests/Subjects/`; die Routen hängt `tests/Support/module-probe-routes.php` zusätzlich unter `observe` (`/api/test/observe-subjects`).
 - Web: Seite „Fächer“ (`src/subjects/`, Menüpunkt `#/faecher` nur mit `subjects.view`, Formular nur mit `subjects.manage`), Fehler werden mit verständlichem Text angezeigt.
+
+## Fach bearbeiten, archivieren, wiederherstellen, löschen (Ticket #63)
+
+Nach dem Vorbild „Klassen verwalten (Ticket #57)“ (Glossar: Fach, Archivierung). Alle Aktionen gehören zu `core`, laufen über `ModuleGate::route()` (Modulprüfung vor dem Recht) und brauchen `subjects.manage`. Nur GET/POST (CORS), Aktionen daher als `POST …/<id>/<aktion>`.
+
+| Endpunkt | Recht | Body | Antwort |
+|---|---|---|---|
+| `POST /api/subjects/:id/update` | `subjects.manage` | `{name}` (optional `code`, nur zur Kontrolle) | `200 {"subject": {id, code, name, archived}}` |
+| `POST /api/subjects/:id/archive` | `subjects.manage` | – | `200 {"subject": …}` mit `archived: true` |
+| `POST /api/subjects/:id/restore` | `subjects.manage` | – | `200 {"subject": …}` mit `archived: false` |
+| `POST /api/subjects/:id/delete` | `subjects.manage` | – | `200 {"deleted": true, "id"}` |
+| `GET /api/subjects?include_archived=1` | `subjects.view` | – | Liste samt archivierter Fächer (`1` oder `true`; sonst ohne) |
+
+- **Ausgabe:** `Subject` und die API-Form tragen jetzt `archived` (`{id, code, name, archived}`); die Liste enthält standardmäßig nur aktive Fächer. Archivierte Fächer sind in der Verwaltung markiert.
+- **Bearbeiten:** nur die Bezeichnung, mit denselben Regeln wie beim Anlegen (`SubjectInput::cleanName`, 1 bis 60 Zeichen, getrimmt, NFC, nicht eindeutig). Das Kürzel bleibt unveränderlich: ein mitgeschicktes abweichendes `code` (auch nur in anderer Schreibung) ist `400 invalid_request`, dasselbe Kürzel mitzuschicken ist harmlos. Reihenfolge der Prüfungen unter der Sperre des Fachs: unbekannt `404 subject_not_found`, archiviert `409 subject_archived`, dann Kürzel und Bezeichnung (`400`).
+- **Archivieren:** das Fach bleibt lesbar (Liste nur mit `include_archived`), sein Kürzel bleibt belegt (Anlegen mit demselben Kürzel: `409 subject_code_taken`), es ist schreibgeschützt (Bearbeiten: `409 subject_archived`) und nicht mehr unter `GET /api/subjects/selectable` beziehungsweise `Subjects::selectable()` (das ist jetzt die Liste ohne Archivierte). Archivieren geht auch bei verknüpften Fächern. Erneutes Archivieren: `409 subject_already_archived`.
+- **Wiederherstellen:** ohne erneute Eindeutigkeitsprüfung (das Kürzel war die ganze Zeit belegt). Eines nicht archivierten Fachs: `409 subject_not_archived`.
+- **Löschen:** endgültig, nur wenn die Verknüpfungsprüfung nichts findet (auch bei archivierten Fächern); sonst `409 subject_linked`, die Meldung nennt die Verknüpfungen und verweist auf das Archivieren. Danach ist das Kürzel wieder frei.
+- **Erweiterbare Verknüpfungsprüfung:** Interface `SubjectLinkGuard` (`label()`, `isLinked(subjectId)`) und die Registry `SubjectLinkGuards` (`linksOf`, `assertDeletable`; gleiches Muster wie `ClassLinkGuard`/`ClassLinkGuards`, siehe „Erweiterungspunkte“). Spätere Module melden ihre Prüfung in ihrer Modul-Registrierung an: `$points->get(SubjectLinkGuards::class)->register(new …)`. `Subjects::delete` fragt alle angemeldeten Prüfungen ab und bleibt unverändert. Ohne Anmeldung gilt ein Fach als unverknüpft. **Die Fachgruppen (Ticket #64) melden darüber „Fach hat Fachgruppe“ an**; wer von beiden Tickets zuletzt gemergt wird, ergänzt diese Anmeldung (`SubjectLinkGuard::label()` z. B. „Fachgruppe“). Die Tests melden eine Test-Verknüpfung über `tests/Support/module-probe-routes.php` an (Tabelle `test_subject_links`, `HttpTestApp::linkSubject`); die Registry selbst ist ohne Datenbank in `tests/Subjects/SubjectLinkGuardsTest.php` getestet.
+- **Speicherung:** Spalte `subjects.archived_at` (Migration 0021, `NULL` = aktiv, sonst Zeitpunkt der Archivierung; gefahrlos wiederholbar mit `ADD COLUMN IF NOT EXISTS`, ohne Abhängigkeit von der eigenen Nummer). Jede Aktion läuft samt Audit-Eintrag in einer Transaktion, das Fach wird dabei gesperrt (`SELECT … FOR UPDATE`), damit Bearbeiten, Archivieren und Löschen sich nicht überholen.
+- **Audit:** `subject.updated` (Kontext `code`, `old_name`, `name`), `subject.archived`, `subject.restored`, `subject.deleted` (Kontext je `code`, `name`); Objekt `subject`, Objekt-ID = Kennung.
+- Code: `src/Modules/Subjects/` (zusätzlich `SubjectLinkGuard`, `SubjectLinkGuards`). Tests: `tests/Subjects/SubjectLifecycleTest.php`, `SubjectLinkGuardsTest.php`.
+- Web: In der Fächerliste Bearbeiten (nur Bezeichnung, Kürzel schreibgeschützt), Archivieren, Wiederherstellen und Löschen mit Bestätigung (nur mit `subjects.manage`), Schalter „Archivierte anzeigen“, archivierte Fächer markiert.
 
 ## Schuleinstellungen (Ticket #66)
 
@@ -358,17 +381,18 @@ Erstes Ticket der Spec #18 (Fächer und Fachgruppen; Glossar: Schuleinstellung).
 
 ## Erweiterungspunkte und Modul-Anmeldung (Review #17)
 
-Ein Muster für alle Erweiterungshaken (Source of Truth 4.7.1: Erweiterbarkeit, Dependency Injection, einheitliche Registries). Aktuell zwei Haken, beide nach demselben Schema benannt (`<Objekt>Guard` = Interface, `<Objekt>Guards` = Registry):
+Ein Muster für alle Erweiterungshaken (Source of Truth 4.7.1: Erweiterbarkeit, Dependency Injection, einheitliche Registries). Aktuell drei Haken, alle nach demselben Schema benannt (`<Objekt>Guard` = Interface, `<Objekt>Guards` = Registry):
 
 | Haken | Interface | Registry | Gefragt von |
 |---|---|---|---|
 | Schuljahr ändern/löschen | `SchoolYearGuard` | `SchoolYearGuards` | `SchoolYears::update/delete` |
 | Klasse löschen (Verknüpfung) | `ClassLinkGuard` | `ClassLinkGuards` | `Classes::delete` |
+| Fach löschen (Verknüpfung) | `SubjectLinkGuard` | `SubjectLinkGuards` | `Subjects::delete` |
 
-- **Instanzbasiert, per Konstruktor injizierbar:** Eine Registry (Basis `Shared\Extension\GuardRegistry`, eigenes typisiertes `register()`) ist eine gewöhnliche Instanz ohne statischen Zustand. Der Dienst bekommt sie im Konstruktor (`new SchoolYears(guards: …)`, `new Classes(linkGuards: …)`, Standard: leere Registry). Gefragt wird in der Reihenfolge der Anmeldung.
+- **Instanzbasiert, per Konstruktor injizierbar:** Eine Registry (Basis `Shared\Extension\GuardRegistry`, eigenes typisiertes `register()`) ist eine gewöhnliche Instanz ohne statischen Zustand. Der Dienst bekommt sie im Konstruktor (`new SchoolYears(guards: …)`, `new Classes(linkGuards: …)`, `new Subjects(linkGuards: …)`, Standard: leere Registry). Gefragt wird in der Reihenfolge der Anmeldung.
 - **Eine Anmeldung je Modul:** Jedes Modul hat eine Klasse `<Modul>Module implements Bootstrap\ModuleRegistration` mit `register(ApiRouter, ExtensionPoints)`: dort meldet es seine Routen am Router und seine Prüfungen an den Registries anderer Module an (`$points->get(SchoolYearGuards::class)->register(new ClassesSchoolYearGuard())`). `ExtensionPoints` (`Shared\Extension`) hält je Registry-Klasse genau eine Instanz der Anwendung und legt sie bei Bedarf an; der Kern kennt keine Registry. `AppBootstrap::registerRoutes` führt nur die Liste der Module (`SchoolYearsModule`, `ClassesModule`, `SubjectsModule`, `SchoolSettingsModule`); ein neues Modul trägt sich dort mit einer Zeile ein und registriert alles Weitere selbst. Ganz ohne Eintrag im Kern ginge es nur mit automatischer Erkennung; die ist bewusst nicht gebaut.
 - **Controller sind Instanzen mit Dienst im Konstruktor** (`SchoolYearsController(SchoolYears)`, `ClassesController(Classes)`), die Routen verweisen auf `[$controller, 'methode']`. Das Modul baut den Controller mit den Registries der Anwendung (`<Modul>Module::controller($points)`, auch von den Probe-Routen der Tests genutzt).
-- **Tests ohne Tarnung:** Registries werden ohne Datenbank direkt getestet (`SchoolYearGuardsTest`, `ClassLinkGuardsTest`: Reihenfolge, erster Einwand gewinnt, eigene Instanz je Test). Für den HTTP-Weg (php-cgi läuft im eigenen Prozess) meldet `tests/Support/module-probe-routes.php` (die Datei bekommt Router und `ExtensionPoints` der Anwendung) Test-Prüfungen an, deren Verhalten der Test über Tabellen steuert (`test_school_year_blocks`, `test_class_links`).
+- **Tests ohne Tarnung:** Registries werden ohne Datenbank direkt getestet (`SchoolYearGuardsTest`, `ClassLinkGuardsTest`, `SubjectLinkGuardsTest`: Reihenfolge, erster Einwand gewinnt, eigene Instanz je Test). Für den HTTP-Weg (php-cgi läuft im eigenen Prozess) meldet `tests/Support/module-probe-routes.php` (die Datei bekommt Router und `ExtensionPoints` der Anwendung) Test-Prüfungen an, deren Verhalten der Test über Tabellen steuert (`test_school_year_blocks`, `test_class_links`, `test_subject_links`).
 - **Gemeinsame Helfer:** Transaktion und Namenssperre: `Shared\Database\Transactions::run/underLock` (von Schuljahren und Klassen genutzt; ältere Stellen wie `AccountInvitations`, `ModuleEntitlements`, `AccessAdministration` haben noch eigene Varianten und wurden nicht angefasst). MySQL-Fehlernummern: `Shared\Database\MysqlError` (1062, 1451, 1452).
 
 ## Typen und Namen für Schuljahr und Klasse (Ticket #69)

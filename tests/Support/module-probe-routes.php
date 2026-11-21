@@ -23,6 +23,8 @@ use TeacherOS\Modules\SchoolYears\SchoolYearObjection;
 use TeacherOS\Modules\SchoolYears\SchoolYearSpan;
 use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Modules\SchoolYears\SchoolYearsModule;
+use TeacherOS\Modules\Subjects\SubjectLinkGuard;
+use TeacherOS\Modules\Subjects\SubjectLinkGuards;
 use TeacherOS\Modules\Subjects\SubjectRoutes;
 use TeacherOS\Modules\Subjects\SubjectsModule;
 use TeacherOS\Shared\Extension\ExtensionPoints;
@@ -75,6 +77,25 @@ final class TestClassLinkGuard implements ClassLinkGuard
     }
 }
 
+/**
+ * Test-Verknuepfung fuer den Erweiterungspunkt der Faecher (Ticket #63), wie es spaeter die Fachgruppen tun: verknuepft ist,
+ * was in `test_subject_links` steht (`HttpTestApp::linkSubject`).
+ */
+final class TestSubjectLinkGuard implements SubjectLinkGuard
+{
+    public function label(): string
+    {
+        return 'Testverknüpfung';
+    }
+
+    public function isLinked(string $subjectId): bool
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_subject_links` WHERE `subject_id` = :id');
+        $stmt->execute(['id' => $subjectId]);
+        return $stmt->fetchColumn() !== false;
+    }
+}
+
 return static function (ApiRouter $router, ExtensionPoints $points): void {
     $router->get(
         '/api/test/observe-probe',
@@ -104,7 +125,8 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
         ModuleGate::route(ModuleCatalog::CORE, [RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]),
     );
 
-    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57).
+    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57, #63).
     $points->get(SchoolYearGuards::class)->register(new TestSchoolYearGuard());
     $points->get(ClassLinkGuards::class)->register(new TestClassLinkGuard());
+    $points->get(SubjectLinkGuards::class)->register(new TestSubjectLinkGuard());
 };
