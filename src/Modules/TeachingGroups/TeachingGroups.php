@@ -148,9 +148,12 @@ final class TeachingGroups
         $year = $this->schoolYears->get($input->schoolYearId);
         $id = Uuid::v4();
         $subject = $classes = null;
-        $this->inTransaction(function () use ($id, $input, $actor, &$subject, &$classes): void {
+        $this->inTransaction(function () use ($id, $input, $actor, $year, &$subject, &$classes): void {
             $subject = $this->subjects->lockSelectable($input->subjectId) ?? throw self::subjectNotSelectable();
-            $classes = $this->lockedSelectableClassesIn($input->schoolYearId, $input->attributes->classIds);
+            $classes = $this->classes->lockSelectable($year->ref(), $input->attributes->classIds);
+            if (count($classes) !== count($input->attributes->classIds)) {
+                throw self::classNotSelectable();
+            }
             $this->repository->insert($id, $input);
             $this->audit->record($actor, AuditLog::TEACHING_GROUP_CREATED, 'teaching_group', $id, ['name' => $input->attributes->name]);
         }, SchoolYears::notFound());
@@ -182,11 +185,11 @@ final class TeachingGroups
                 throw new CodedException('invalid_request', 400, 'Das Fach einer Fachgruppe lässt sich nicht ändern.');
             }
             $attributes = TeachingGroupAttributes::fromInput($name, $classIds);
-            $current = $this->repository->classIdsOf($id);
+            $current = $this->repository->classIdsOf($id, lock: true);
             $added = array_values(array_diff($attributes->classIds, $current));
             $removed = array_values(array_diff($current, $attributes->classIds));
-            if ($added !== []) {
-                $this->lockedSelectableClassesIn($before['school_year_id'], $added);
+            if ($added !== [] && count($this->classes->lockSelectableIds($before['school_year_id'], $added)) !== count($added)) {
+                throw self::classNotSelectable();
             }
             foreach ($removed as $classId) {
                 $this->classRemovalGuards->assertRemovable($id, $classId);
@@ -289,23 +292,6 @@ final class TeachingGroups
     private static function classNotSelectable(): CodedException
     {
         return new CodedException('class_not_selectable', 409, 'Mindestens eine Klasse gibt es nicht, ist archiviert oder gehört nicht zum Schuljahr der Fachgruppe.');
-    }
-
-    /**
-     * Die genannten Klassen, so wie sie im Schuljahr waehlbar sind (nach Klassenstufe und Bezeichnung), gesperrt bis zum Ende der
-     * Transaktion. Nur in einer Transaktion aufrufen.
-     *
-     * @param list<string> $classIds ohne Doppelte
-     * @return list<SchoolClass>
-     * @throws CodedException `class_not_selectable` (409), wenn eine Klasse fehlt, archiviert ist oder zu einem anderen Schuljahr gehoert
-     */
-    private function lockedSelectableClassesIn(string $schoolYearId, array $classIds): array
-    {
-        $selected = $this->classes->lockSelectable($schoolYearId, $classIds);
-        if (count($selected) !== count($classIds)) {
-            throw self::classNotSelectable();
-        }
-        return $selected;
     }
 
     /**

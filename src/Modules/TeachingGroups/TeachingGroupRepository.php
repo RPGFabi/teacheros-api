@@ -56,13 +56,15 @@ final class TeachingGroupRepository
     }
 
     /**
-     * Die Klassen-Kennungen einer Fachgruppe (unsortiert).
+     * Die Klassen-Kennungen einer Fachgruppe (unsortiert). Mit $lock als sperrende, aktuelle Lesung (gemeinsame Sperre): so
+     * legt sie in einer Transaktion keinen Snapshot an, und spaetere sperrende Lesungen warten auf gleichzeitige Aenderungen,
+     * statt unter MariaDBs `innodb_snapshot_isolation` mit Fehler 1020 zu scheitern.
      *
      * @return list<string>
      */
-    public function classIdsOf(string $id): array
+    public function classIdsOf(string $id, bool $lock = false): array
     {
-        $stmt = DB::getInstance()->prepare('SELECT `class_id` FROM `teaching_group_classes` WHERE `teaching_group_id` = :id');
+        $stmt = DB::getInstance()->prepare('SELECT `class_id` FROM `teaching_group_classes` WHERE `teaching_group_id` = :id' . ($lock ? ' LOCK IN SHARE MODE' : ''));
         $stmt->execute(['id' => $id]);
         return $stmt->fetchAll(\PDO::FETCH_COLUMN);
     }

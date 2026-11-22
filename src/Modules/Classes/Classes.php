@@ -81,16 +81,31 @@ final class Classes
      * Transaktion fragen, damit ein gleichzeitiges Archivieren nicht zwischen Pruefung und Schreiben kommt. Eine archivierte,
      * unbekannte oder zu einem anderen Schuljahr gehoerende Klasse fehlt in der Antwort.
      *
+     * Liest in der Transaktion nur sperrend; das Schuljahr bringt der Aufrufer mit (vor der Transaktion gelesen). Die erste
+     * nicht sperrende Lesung legt naemlich den Snapshot der Transaktion an, und danach scheitert jede sperrende Lesung oder
+     * Eindeutigkeitspruefung auf eine gerade geaenderte Zeile unter MariaDBs `innodb_snapshot_isolation` (ab 11.6 Standard)
+     * mit Fehler 1020, statt zu warten.
+     *
      * @param list<string> $classIds
      * @return list<SchoolClass>
-     * @throws CodedException `school_year_not_found` (404)
      */
-    public function lockSelectable(string $schoolYearId, array $classIds): array
+    public function lockSelectable(SchoolYearRef $year, array $classIds): array
     {
-        $year = $this->schoolYear($schoolYearId);
-        $rows = $this->repository->selectableShared($schoolYearId, $classIds);
+        $rows = $this->repository->selectableShared($year->id, $classIds);
         usort($rows, static fn (array $a, array $b): int => ($a['grade_level'] <=> $b['grade_level']) ?: strnatcasecmp($a['name'], $b['name']));
         return array_map(static fn (array $r): SchoolClass => self::present($r, $year), $rows);
+    }
+
+    /**
+     * Wie {@see self::lockSelectable()}, aber nur die Kennungen der waehlbaren Klassen (unsortiert), fuer Aufrufer, die
+     * lediglich pruefen und sperren.
+     *
+     * @param list<string> $classIds
+     * @return list<string>
+     */
+    public function lockSelectableIds(string $schoolYearId, array $classIds): array
+    {
+        return array_column($this->repository->selectableShared($schoolYearId, $classIds), 'id');
     }
 
     /**
