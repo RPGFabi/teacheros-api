@@ -104,6 +104,26 @@ _Avoid_: Unterrichtsfach, Kurs, Lernbereich
 Eine Schülergruppe, die in genau einem Schuljahr in genau einem Fach gemeinsam unterrichtet und bewertet wird, gebildet aus Schülerinnen und Schülern einer oder mehrerer Klassen desselben Schuljahres (z. B. „AES 1“ und „AES 2“ aus 7a–7c). Die Bezeichnung ist frei gewählt und innerhalb des Schuljahres eindeutig.
 _Avoid_: Kurs, Lerngruppe, Teilgruppe
 
+**Schüler/in**:
+Eine Person, die an der Schulinstanz als Schüler/in geführt wird, mit Vor- und Nachnamen und optional Geburtsdatum. Namen dürfen sich ändern; die Person, ihre Mitgliedschaften und alles, was an ihr hängt, bleiben dieselben. Sie ist _aktiv_ oder _ausgetreten_ und braucht kein Konto. Endgültig gelöscht wird sie nur, solange sie noch nie eine Mitgliedschaft hatte.
+_Avoid_: Schüler, SuS (im Modell), Student, Kind
+
+**Klassenmitgliedschaft**:
+Die Festlegung, dass eine Schüler/in für einen Gültigkeitszeitraum einer Klasse angehört. An jedem Tag gehört sie höchstens einer Klasse an. Was schon gegolten hat, wird beendet, nie gelöscht oder rückwirkend verändert; nur eine Mitgliedschaft, die noch nie gegolten hat, darf geändert oder gelöscht werden.
+_Avoid_: Klassenzugehörigkeit, Zuordnung, Einschreibung
+
+**Klassenwechsel**:
+Der Übergang einer Schüler/in in eine andere Klasse desselben Schuljahres zu einem Stichtag, frühestens heute: Die bisherige Klassenmitgliedschaft endet am Vortag, die neue beginnt am Stichtag. Die alte bleibt als Historie bestehen.
+_Avoid_: Umzug, Versetzung, Umbuchung
+
+**Fachgruppenmitgliedschaft**:
+Die Festlegung, dass eine Schüler/in für einen Gültigkeitszeitraum einer Fachgruppe angehört, mit denselben Regeln für Historie wie die Klassenmitgliedschaft. Eine Schüler/in kann zugleich mehreren Fachgruppen angehören, auch desselben Fachs, derselben Fachgruppe aber nicht mit sich überschneidenden Zeiträumen. Am ersten Tag muss die Schüler/in einer der Klassen der Fachgruppe angehören; ein späterer Klassenwechsel beendet die Fachgruppenmitgliedschaft nicht.
+_Avoid_: Kursbelegung, Kurszugehörigkeit, Zuordnung
+
+**Austritt**:
+Das Ausscheiden einer Schüler/in aus der Schule mit ihrem letzten Tag als Stichtag, frühestens heute, auch im Voraus: Alle ihre Mitgliedschaften enden am Stichtag, ab dem Folgetag ist sie _ausgetreten_; ihre Daten bleiben erhalten. Ob sie _aktiv_ oder _ausgetreten_ ist, folgt allein aus dem Datum. Ein geplanter Austritt lässt sich bis zum Stichtag zurücknehmen; beendete Mitgliedschaften bleiben dabei beendet. Die **Rückkehr** macht eine ausgetretene Schüler/in ab ihrem ersten Tag zurück (frühestens heute) wieder _aktiv_, ohne alte Mitgliedschaften wiederzubeleben; neue Mitgliedschaften beginnen frühestens an diesem Tag. Eine Schüler/in ohne laufende Mitgliedschaft (etwa in den Ferien) ist nicht ausgetreten.
+_Avoid_: Abmeldung, Löschung, Abgang, Deaktivierung
+
 **Lehrkraft**:
 Ein Konto mit der Standardrolle Lehrkraft; eigene Rollen machen ein Konto nicht zur Lehrkraft. Zugeordnet werden kann eine Lehrkraft, solange ihr Konto nicht deaktiviert ist. Wird ihr die Rolle entzogen oder das Konto deaktiviert, bleiben ihre bisherigen Zuordnungen als Historie bestehen. Sobald es Personen für Lehrkräfte gibt, hängt die Zuordnung an der Person statt am Konto.
 _Avoid_: Lehrer/in, LK, Personal
@@ -117,7 +137,7 @@ Die Lehrkraft-Zuordnung einer Lehrkraft zu einer Klasse statt zu einer Fachgrupp
 _Avoid_: Klassenlehrer/in, Stammklassenleitung
 
 **Gültigkeitszeitraum**:
-Die Kalendertage vom ersten bis einschließlich zum letzten Tag, an denen eine Zuordnung gilt; ein offenes Ende heißt „bis zum Ende des Schuljahres“. Der Zeitraum liegt immer innerhalb des Schuljahres der Fachgruppe bzw. Klasse.
+Die Kalendertage vom ersten bis einschließlich zum letzten Tag, an denen eine Zuordnung oder Mitgliedschaft gilt; ein offenes Ende heißt „bis zum Ende des Schuljahres“. Der Zeitraum liegt immer innerhalb des Schuljahres der Fachgruppe bzw. Klasse.
 _Avoid_: Laufzeit, Periode, Zeitraum
 
 **Archivierung**:
