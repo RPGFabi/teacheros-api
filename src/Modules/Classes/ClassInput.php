@@ -7,13 +7,13 @@ namespace TeacherOS\Modules\Classes;
 use TeacherOS\Shared\Exceptions\CodedException;
 
 /**
- * Geprueftes Anlegen einer Klasse (GLOSSARY.md: Klasse, Klassenstufe): Schuljahr plus die Regeln von {@see ClassChange}.
+ * Geprueftes Anlegen einer Klasse (GLOSSARY.md: Klasse, Klassenstufe): Schuljahr plus die Regeln von {@see ClassAttributes}.
  */
 final class ClassInput
 {
     private function __construct(
         public readonly string $schoolYearId,
-        public readonly ClassChange $change,
+        public readonly ClassAttributes $attributes,
     ) {
     }
 
@@ -23,6 +23,6 @@ final class ClassInput
         if (!is_string($schoolYearId) || $schoolYearId === '') {
             throw new CodedException('invalid_request', 400, 'Bitte das Schuljahr der Klasse angeben.');
         }
-        return new self($schoolYearId, ClassChange::fromInput($gradeLevel, $name));
+        return new self($schoolYearId, ClassAttributes::fromInput($gradeLevel, $name));
     }
 }

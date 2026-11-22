@@ -11,16 +11,39 @@ use Hoelzle\Core\Database\DB;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Bootstrap\ApiRouter;
+use TeacherOS\Modules\ClassLeaders\ClassLeaderKind;
+use TeacherOS\Modules\ClassLeaders\ClassLeaderRoutes;
+use TeacherOS\Modules\ClassLeaders\ClassLeadersModule;
 use TeacherOS\Modules\Classes\ClassesModule;
 use TeacherOS\Modules\Classes\ClassLinkGuard;
 use TeacherOS\Modules\Classes\ClassLinkGuards;
 use TeacherOS\Modules\Classes\ClassRoutes;
+use TeacherOS\Modules\SchoolYears\SchoolYear;
+use TeacherOS\Modules\SchoolSettings\SchoolLimits;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuard;
 use TeacherOS\Modules\SchoolYears\SchoolYearGuards;
 use TeacherOS\Modules\SchoolYears\SchoolYearObjection;
-use TeacherOS\Modules\SchoolYears\SchoolYearPeriod;
+use TeacherOS\Modules\SchoolYears\SchoolYearSpan;
 use TeacherOS\Modules\SchoolYears\SchoolYearRoutes;
 use TeacherOS\Modules\SchoolYears\SchoolYearsModule;
+use TeacherOS\Modules\Subjects\SubjectLinkGuard;
+use TeacherOS\Modules\Subjects\SubjectLinkGuards;
+use TeacherOS\Modules\Subjects\SubjectRoutes;
+use TeacherOS\Modules\Subjects\SubjectsModule;
+use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentKind;
+use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentRoutes;
+use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentsModule;
+
+use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalGuard;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalGuards;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupClassRemovalObjection;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuard;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuards;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupRoutes;
+use TeacherOS\Modules\TeachingGroups\TeachingGroupsModule;
+use TeacherOS\Shared\Assignments\AssignmentRules;
+use TeacherOS\Shared\Assignments\AssignmentSchoolYearGuard;
+use TeacherOS\Shared\Clock\FixedClock;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 use TeacherOS\Shared\Modules\ModuleCatalog;
 use TeacherOS\Shared\Modules\ModuleGate;
@@ -34,14 +57,14 @@ use TeacherOS\Shared\Security\RequirePermission;
  */
 final class TestSchoolYearGuard implements SchoolYearGuard
 {
-    public function objectionToUpdate(array $year, SchoolYearPeriod $newPeriod): ?SchoolYearObjection
+    public function objectionToUpdate(SchoolYear $year, SchoolYearSpan $newSpan): ?SchoolYearObjection
     {
-        return $this->blocked($year['id'], 'update') ? new SchoolYearObjection('test_update_blocked', 'Test: Aendern gesperrt.') : null;
+        return $this->blocked($year->id, 'update') ? new SchoolYearObjection('test_update_blocked', 'Test: Aendern gesperrt.') : null;
     }
 
-    public function objectionToDeletion(array $year): ?SchoolYearObjection
+    public function objectionToDeletion(SchoolYear $year): ?SchoolYearObjection
     {
-        return $this->blocked($year['id'], 'delete') ? new SchoolYearObjection('test_delete_blocked', 'Test: Loeschen gesperrt.') : null;
+        return $this->blocked($year->id, 'delete') ? new SchoolYearObjection('test_delete_blocked', 'Test: Loeschen gesperrt.') : null;
     }
 
     private function blocked(string $schoolYearId, string $action): bool
@@ -71,6 +94,58 @@ final class TestClassLinkGuard implements ClassLinkGuard
     }
 }
 
+/**
+ * Test-Verknuepfung fuer den Erweiterungspunkt der Faecher (Ticket #63), wie es spaeter die Fachgruppen tun: verknuepft ist,
+ * was in `test_subject_links` steht (`HttpTestApp::linkSubject`).
+ */
+final class TestSubjectLinkGuard implements SubjectLinkGuard
+{
+    public function label(): string
+    {
+        return 'Testverknüpfung';
+    }
+
+    public function isLinked(string $subjectId): bool
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_subject_links` WHERE `subject_id` = :id');
+        $stmt->execute(['id' => $subjectId]);
+        return $stmt->fetchColumn() !== false;
+    }
+}
+
+/**
+ * Test-Verknuepfung fuer den Erweiterungspunkt der Fachgruppen (Ticket #65), wie es spaeter #67 tut: verknuepft ist, was in
+ * `test_teaching_group_links` steht (`HttpTestApp::linkTeachingGroup`).
+ */
+final class TestTeachingGroupLinkGuard implements TeachingGroupLinkGuard
+{
+    public function label(): string
+    {
+        return 'Testverknüpfung';
+    }
+
+    public function isLinked(string $teachingGroupId): bool
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_teaching_group_links` WHERE `teaching_group_id` = :id');
+        $stmt->execute(['id' => $teachingGroupId]);
+        return $stmt->fetchColumn() !== false;
+    }
+}
+
+/**
+ * Test-Einwand gegen das Entfernen einer Klasse aus einer Fachgruppe (Ticket #65), wie es spaeter #19 tut: abgelehnt wird,
+ * was in `test_teaching_group_class_blocks` steht (`HttpTestApp::blockClassRemoval`).
+ */
+final class TestTeachingGroupClassRemovalGuard implements TeachingGroupClassRemovalGuard
+{
+    public function objectionToRemoval(string $teachingGroupId, string $classId): ?TeachingGroupClassRemovalObjection
+    {
+        $stmt = DB::getInstance()->prepare('SELECT 1 FROM `test_teaching_group_class_blocks` WHERE `teaching_group_id` = :group AND `class_id` = :class');
+        $stmt->execute(['group' => $teachingGroupId, 'class' => $classId]);
+        return $stmt->fetchColumn() === false ? null : new TeachingGroupClassRemovalObjection('test_class_removal_blocked', 'Test: Entfernen der Klasse gesperrt.');
+    }
+}
+
 return static function (ApiRouter $router, ExtensionPoints $points): void {
     $router->get(
         '/api/test/observe-probe',
@@ -84,8 +159,55 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
     // Modulpruefung vor den Rechten laeuft. Mit den Diensten der Anwendung, also denselben Erweiterungspunkten.
     SchoolYearRoutes::register($router, (new SchoolYearsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-school-years');
     ClassRoutes::register($router, (new ClassesModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-classes');
+    SubjectRoutes::register($router, (new SubjectsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-subjects');
+    TeachingGroupRoutes::register($router, (new TeachingGroupsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-teaching-groups');
 
-    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57).
+    // Lehrkraft-Zuordnung (Ticket #67): unter `observe` (Modulpruefung vor den Rechten) und, unter `core`, mit einer Uhr, deren
+    // heutiger Tag der Test je Request in TEST_TODAY mitgibt ("Test mit festem Datum"; ohne Angabe die echte Uhr).
+    TeacherAssignmentRoutes::register($router, (new TeacherAssignmentsModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-teacher-assignments');
+    $today = $_SERVER['TEST_TODAY'] ?? getenv('TEST_TODAY');
+    TeacherAssignmentRoutes::register(
+        $router,
+        (new TeacherAssignmentsModule())->controller($points, is_string($today) && $today !== '' ? new FixedClock($today) : new \TeacherOS\Shared\Clock\SystemClock()),
+        ModuleCatalog::CORE,
+        '/api/test/dated-teacher-assignments',
+    );
+
+    // Klassenleitung (Ticket #68): wie die Lehrkraft-Zuordnung unter `observe` und, unter `core`, mit der Test-Uhr (TEST_TODAY).
+    ClassLeaderRoutes::register($router, (new ClassLeadersModule())->controller($points), ModuleCatalog::OBSERVE, '/api/test/observe-class-leaders');
+    ClassLeaderRoutes::register(
+        $router,
+        (new ClassLeadersModule())->controller($points, is_string($today) && $today !== '' ? new FixedClock($today) : new \TeacherOS\Shared\Clock\SystemClock()),
+        ModuleCatalog::CORE,
+        '/api/test/dated-class-leaders',
+    );
+
+    // Schuljahr-Einwaende der Zuordnungen mit fester Uhr: die echten Einwaende (die der Module) kennen die echte Uhr; mit TEST_TODAY
+    // meldet sich zusaetzlich je Art ein Einwand mit dem festen Tag an ("Test mit festem Datum").
+    if (is_string($today) && $today !== '') {
+        $dated = new AssignmentRules(new FixedClock($today));
+        $points->get(SchoolYearGuards::class)->register(new AssignmentSchoolYearGuard(TeacherAssignmentKind::get(), rules: $dated));
+        $points->get(SchoolYearGuards::class)->register(new AssignmentSchoolYearGuard(ClassLeaderKind::get(), rules: $dated));
+    }
+
+    // Stellvertretend fuer ein spaeteres Zuordnungs-Modul (#67, #68): liest die Obergrenzen der Schuleinstellungen
+    // ausschliesslich ueber den Dienst SchoolLimits, ohne deren Speicherung zu kennen.
+    $router->get(
+        '/api/test/school-limits',
+        static function (Request $request, Response $response): void {
+            $limits = new SchoolLimits();
+            $response->json([
+                'max_teachers_per_teaching_group' => $limits->maxTeachersPerTeachingGroup(),
+                'max_class_leaders_per_class' => $limits->maxClassLeadersPerClass(),
+            ]);
+        },
+        ModuleGate::route(ModuleCatalog::CORE, [RequirePermission::for(PermissionCatalog::ACCOUNTS_VIEW)]),
+    );
+
+    // Die Test-Pruefungen haengen hinter den echten (Tickets #56, #57, #63, #65).
     $points->get(SchoolYearGuards::class)->register(new TestSchoolYearGuard());
     $points->get(ClassLinkGuards::class)->register(new TestClassLinkGuard());
+    $points->get(SubjectLinkGuards::class)->register(new TestSubjectLinkGuard());
+    $points->get(TeachingGroupLinkGuards::class)->register(new TestTeachingGroupLinkGuard());
+    $points->get(TeachingGroupClassRemovalGuards::class)->register(new TestTeachingGroupClassRemovalGuard());
 };

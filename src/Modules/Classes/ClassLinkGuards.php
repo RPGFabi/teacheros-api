@@ -4,42 +4,26 @@ declare(strict_types=1);
 
 namespace TeacherOS\Modules\Classes;
 
-use TeacherOS\Shared\Exceptions\CodedException;
-use TeacherOS\Shared\Extension\GuardRegistry;
+use TeacherOS\Shared\Extension\LinkGuardRegistry;
 
 /**
- * Erweiterungspunkt der Klassen: sammelt die {@see ClassLinkGuard}s der Module (gleiches Muster wie
- * `SchoolYearGuards`). Ohne Anmeldung gilt eine Klasse als unverknuepft.
+ * Erweiterungspunkt der Klassen: sammelt die {@see ClassLinkGuard}s der Module (Grundlage {@see LinkGuardRegistry}, gleiches
+ * Muster wie `SchoolYearGuards`). Ohne Anmeldung gilt eine Klasse als unverknuepft.
  */
-final class ClassLinkGuards extends GuardRegistry
+final class ClassLinkGuards extends LinkGuardRegistry
 {
     public function register(ClassLinkGuard $guard): void
     {
         $this->add($guard);
     }
 
-    /**
-     * Bezeichnungen aller Verknuepfungen, die an der Klasse haengen; leer, wenn sie nirgends verknuepft ist.
-     *
-     * @return list<string>
-     */
-    public function linksOf(string $classId): array
+    protected function errorCode(): string
     {
-        $labels = [];
-        foreach ($this->guards() as $guard) {
-            if ($guard->isLinked($classId)) {
-                $labels[] = $guard->label();
-            }
-        }
-        return $labels;
+        return 'class_linked';
     }
 
-    /** @throws CodedException `class_linked` (409), die Meldung nennt alle Verknuepfungen */
-    public function assertDeletable(string $classId): void
+    protected function subject(): string
     {
-        $links = $this->linksOf($classId);
-        if ($links !== []) {
-            throw new CodedException('class_linked', 409, 'Die Klasse ist verknüpft (' . implode(', ', $links) . ') und kann nicht gelöscht werden. Bitte stattdessen archivieren.');
-        }
+        return 'Die Klasse';
     }
 }

@@ -21,19 +21,19 @@ final class SchoolYearGuards extends GuardRegistry
     }
 
     /**
-     * @param array{id:string,name:string,starts_on:string,ends_on:string,status:string} $year das Schuljahr vor der Aenderung
+     * @param SchoolYear $year das Schuljahr vor der Aenderung
      * @throws CodedException 409 mit Code und Meldung des ersten Einwands
      */
-    public function assertUpdatable(array $year, SchoolYearPeriod $newPeriod): void
+    public function assertUpdatable(SchoolYear $year, SchoolYearSpan $newSpan): void
     {
-        $this->assert(static fn (SchoolYearGuard $guard): ?SchoolYearObjection => $guard->objectionToUpdate($year, $newPeriod));
+        $this->assert(static fn (SchoolYearGuard $guard): ?SchoolYearObjection => $guard->objectionToUpdate($year, $newSpan));
     }
 
     /**
-     * @param array{id:string,name:string,starts_on:string,ends_on:string,status:string} $year
+     * @param SchoolYear $year
      * @throws CodedException 409 mit Code und Meldung des ersten Einwands
      */
-    public function assertDeletable(array $year): void
+    public function assertDeletable(SchoolYear $year): void
     {
         $this->assert(static fn (SchoolYearGuard $guard): ?SchoolYearObjection => $guard->objectionToDeletion($year));
     }

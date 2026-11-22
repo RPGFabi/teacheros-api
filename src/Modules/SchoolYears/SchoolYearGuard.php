@@ -19,14 +19,14 @@ interface SchoolYearGuard
     /**
      * Einwand gegen die Aenderung des Zeitraums.
      *
-     * @param array{id:string,name:string,starts_on:string,ends_on:string,status:string} $year das Schuljahr vor der Aenderung
+     * @param SchoolYear $year das Schuljahr vor der Aenderung
      */
-    public function objectionToUpdate(array $year, SchoolYearPeriod $newPeriod): ?SchoolYearObjection;
+    public function objectionToUpdate(SchoolYear $year, SchoolYearSpan $newSpan): ?SchoolYearObjection;
 
     /**
      * Einwand gegen das Loeschen.
      *
-     * @param array{id:string,name:string,starts_on:string,ends_on:string,status:string} $year
+     * @param SchoolYear $year
      */
-    public function objectionToDeletion(array $year): ?SchoolYearObjection;
+    public function objectionToDeletion(SchoolYear $year): ?SchoolYearObjection;
 }

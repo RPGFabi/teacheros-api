@@ -121,6 +121,11 @@ final class HttpTestApp
         }
         // Tabelle der Test-Verknuepfung von Klassen (tests/Support/module-probe-routes.php); kein Teil des Schemas.
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_class_links` (`class_id` char(36) NOT NULL PRIMARY KEY)');
+        // Ebenso fuer die Test-Verknuepfung von Faechern (Ticket #63).
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_subject_links` (`subject_id` char(36) NOT NULL PRIMARY KEY)');
+        // Ebenso fuer die Test-Verknuepfung von Fachgruppen und den Test-Einwand gegen das Entfernen einer Klasse aus einer Fachgruppe (Ticket #65).
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_teaching_group_links` (`teaching_group_id` char(36) NOT NULL PRIMARY KEY)');
+        $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_teaching_group_class_blocks` (`teaching_group_id` char(36) NOT NULL, `class_id` char(36) NOT NULL, PRIMARY KEY (`teaching_group_id`, `class_id`))');
         // Ebenso fuer die Test-Pruefung der Schuljahre: welche Aktion (update/delete) an welchem Schuljahr gesperrt ist.
         $this->pdo()->exec('CREATE TABLE IF NOT EXISTS `test_school_year_blocks` (`school_year_id` char(36) NOT NULL, `action` varchar(10) NOT NULL, PRIMARY KEY (`school_year_id`, `action`))');
     }
@@ -173,9 +178,23 @@ final class HttpTestApp
         $this->pdo()->exec('DELETE FROM `audit_log`');
     }
 
+    /** Entfernt alle gespeicherten Schuleinstellungen (Testaufbau): danach gelten die Standardwerte. */
+    public function resetSchoolSettings(): void
+    {
+        $this->pdo()->exec('DELETE FROM `school_settings`');
+    }
+
+    /** @return list<array<string,mixed>> Audit-Eintraege `school_setting.updated` in Reihenfolge */
+    public function schoolSettingAudit(): array
+    {
+        return $this->pdo()->query("SELECT * FROM `audit_log` WHERE `action` = 'school_setting.updated' ORDER BY `id`")->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     /** Entfernt alle Klassen (Testaufbau). */
     public function resetClasses(): void
     {
+        $this->resetTeachingGroups();
+        $this->pdo()->exec('DELETE FROM `class_leaders`');
         $this->pdo()->exec('DELETE FROM `test_class_links`');
         $this->pdo()->exec('DELETE FROM `classes`');
     }
@@ -190,6 +209,61 @@ final class HttpTestApp
     public function classes(): array
     {
         return $this->pdo()->query('SELECT * FROM `classes` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** Entfernt alle Faecher (Testaufbau). */
+    public function resetSubjects(): void
+    {
+        $this->resetTeachingGroups();
+        $this->pdo()->exec('DELETE FROM `test_subject_links`');
+        $this->pdo()->exec('DELETE FROM `subjects`');
+    }
+
+    /** Verknuepft ein Fach mit der Test-Verknuepfung (stellvertretend fuer ein spaeteres Modul wie die Fachgruppen). */
+    public function linkSubject(string $subjectId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_subject_links` (`subject_id`) VALUES (?)')->execute([$subjectId]);
+    }
+
+    /** Entfernt alle Fachgruppen samt ihrer Klassen (Testaufbau). */
+    public function resetTeachingGroups(): void
+    {
+        $this->pdo()->exec('DELETE FROM `teacher_assignments`');
+
+        $this->pdo()->exec('DELETE FROM `test_teaching_group_links`');
+        $this->pdo()->exec('DELETE FROM `test_teaching_group_class_blocks`');
+        $this->pdo()->exec('DELETE FROM `teaching_group_classes`');
+        $this->pdo()->exec('DELETE FROM `teaching_groups`');
+    }
+
+    /** Verknuepft eine Fachgruppe mit der Test-Verknuepfung (stellvertretend fuer ein spaeteres Modul wie #67). */
+    public function linkTeachingGroup(string $teachingGroupId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_teaching_group_links` (`teaching_group_id`) VALUES (?)')->execute([$teachingGroupId]);
+    }
+
+    /** Laesst die Test-Pruefung das Entfernen dieser Klasse aus dieser Fachgruppe ablehnen (stellvertretend fuer #19). */
+    public function blockClassRemoval(string $teachingGroupId, string $classId): void
+    {
+        $this->pdo()->prepare('INSERT INTO `test_teaching_group_class_blocks` (`teaching_group_id`, `class_id`) VALUES (?, ?)')->execute([$teachingGroupId, $classId]);
+    }
+
+    /** @return list<array<string,mixed>> nach Anlegezeitpunkt */
+    public function teachingGroups(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `teaching_groups` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function teachingGroupClasses(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `teaching_group_classes` ORDER BY `teaching_group_id`, `class_id`')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** @return list<array<string,mixed>> nach Anlegezeitpunkt */
+    public function subjects(): array
+    {
+        return $this->pdo()->query('SELECT * FROM `subjects` ORDER BY `created_at`, `id`')->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /** Entfernt alle Schuljahre samt ihrer Klassen und Sperren (Testaufbau). */
