@@ -56,13 +56,15 @@ final class TeachingGroupRepository
     }
 
     /**
-     * Die Klassen-Kennungen einer Fachgruppe (unsortiert).
+     * Die Klassen-Kennungen einer Fachgruppe (unsortiert). Mit $lock als sperrende, aktuelle Lesung (gemeinsame Sperre): so
+     * legt sie in einer Transaktion keinen Snapshot an, und spaetere sperrende Lesungen warten auf gleichzeitige Aenderungen,
+     * statt unter MariaDBs `innodb_snapshot_isolation` mit Fehler 1020 zu scheitern.
      *
      * @return list<string>
      */
-    public function classIdsOf(string $id): array
+    public function classIdsOf(string $id, bool $lock = false): array
     {
-        $stmt = DB::getInstance()->prepare('SELECT `class_id` FROM `teaching_group_classes` WHERE `teaching_group_id` = :id');
+        $stmt = DB::getInstance()->prepare('SELECT `class_id` FROM `teaching_group_classes` WHERE `teaching_group_id` = :id' . ($lock ? ' LOCK IN SHARE MODE' : ''));
         $stmt->execute(['id' => $id]);
         return $stmt->fetchAll(\PDO::FETCH_COLUMN);
     }
@@ -76,9 +78,9 @@ final class TeachingGroupRepository
     {
         $db = DB::getInstance();
         $db->prepare('INSERT INTO `teaching_groups` (`id`, `school_year_id`, `subject_id`, `name`, `name_key`) VALUES (:id, :year, :subject, :name, :key)')
-            ->execute(['id' => $id, 'year' => $input->schoolYearId, 'subject' => $input->subjectId, 'name' => $input->name, 'key' => $input->nameKey()]);
+            ->execute(['id' => $id, 'year' => $input->schoolYearId, 'subject' => $input->subjectId, 'name' => $input->attributes->name, 'key' => $input->attributes->nameKey()]);
         $link = $db->prepare('INSERT INTO `teaching_group_classes` (`teaching_group_id`, `class_id`) VALUES (:id, :class)');
-        foreach ($input->classIds as $classId) {
+        foreach ($input->attributes->classIds as $classId) {
             $link->execute(['id' => $id, 'class' => $classId]);
         }
     }
@@ -91,11 +93,11 @@ final class TeachingGroupRepository
      * @param list<string> $removeClassIds
      * @throws \PDOException bei doppelter Bezeichnung im Schuljahr (Fehler 1062) oder fehlender Klasse (Fehler 1452)
      */
-    public function update(string $id, TeachingGroupChanges $changes, array $addClassIds, array $removeClassIds): void
+    public function update(string $id, TeachingGroupAttributes $attributes, array $addClassIds, array $removeClassIds): void
     {
         $db = DB::getInstance();
         $db->prepare('UPDATE `teaching_groups` SET `name` = :name, `name_key` = :key WHERE `id` = :id')
-            ->execute(['id' => $id, 'name' => $changes->name, 'key' => $changes->nameKey()]);
+            ->execute(['id' => $id, 'name' => $attributes->name, 'key' => $attributes->nameKey()]);
         $add = $db->prepare('INSERT INTO `teaching_group_classes` (`teaching_group_id`, `class_id`) VALUES (:id, :class)');
         foreach ($addClassIds as $classId) {
             $add->execute(['id' => $id, 'class' => $classId]);

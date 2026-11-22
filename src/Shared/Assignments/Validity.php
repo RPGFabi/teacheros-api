@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TeacherOS\Modules\TeacherAssignments;
+namespace TeacherOS\Shared\Assignments;
 
 use TeacherOS\Modules\SchoolYears\SchoolYear;
 use TeacherOS\Shared\Exceptions\CodedException;
@@ -13,7 +13,7 @@ use TeacherOS\Shared\Exceptions\CodedException;
  * Obergrenze ist das Ende offen und heisst "bis zum Ende des Schuljahres"; es folgt dem Schuljahr, das der Aufrufer
  * mitgibt. Alle Tage als `JJJJ-MM-TT`. Dieselbe Form tragen Lehrkraft-Zuordnungen zu Fachgruppen (#67) und Klassenleitungen (#68).
  */
-final class AssignmentPeriod
+final class Validity
 {
     public function __construct(
         public readonly string $validFrom,
@@ -78,7 +78,7 @@ final class AssignmentPeriod
     }
 
     /**
-     * Liegt der Zeitraum innerhalb eines Schuljahres mit diesem ersten und letzten Tag? Ein offenes Ende folgt dem
+     * Liegt der Gueltigkeitszeitraum innerhalb eines Schuljahres mit diesem ersten und letzten Tag? Ein offenes Ende folgt dem
      * Schuljahresende und passt daher immer, solange der Beginn innerhalb liegt.
      */
     public function fitsWithin(string $yearStartsOn, string $yearEndsOn): bool

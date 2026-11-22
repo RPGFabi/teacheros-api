@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TeacherOS\Modules\TeacherAssignments;
 
 use TeacherOS\Bootstrap\ApiRouter;
+use TeacherOS\Shared\Assignments\AssignmentsController;
 use TeacherOS\Shared\Modules\ModuleCatalog;
 use TeacherOS\Shared\Modules\ModuleGate;
 use TeacherOS\Shared\Security\PermissionCatalog;
@@ -18,7 +19,7 @@ use TeacherOS\Shared\Security\RequirePermission;
  */
 final class TeacherAssignmentRoutes
 {
-    public static function register(ApiRouter $router, TeacherAssignmentsController $controller, string $moduleId = ModuleCatalog::CORE, string $path = '/api/teacher-assignments'): void
+    public static function register(ApiRouter $router, AssignmentsController $controller, string $moduleId = ModuleCatalog::CORE, string $path = '/api/teacher-assignments'): void
     {
         $router->get($path, [$controller, 'index'], ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::TEACHING_GROUPS_VIEW)]));
         $manage = ModuleGate::route($moduleId, [RequirePermission::for(PermissionCatalog::TEACHER_ASSIGNMENTS_MANAGE)]);

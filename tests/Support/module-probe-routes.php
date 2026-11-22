@@ -11,6 +11,7 @@ use Hoelzle\Core\Database\DB;
 use Hoelzle\Core\Routing\Request;
 use Hoelzle\Core\Routing\Response;
 use TeacherOS\Bootstrap\ApiRouter;
+use TeacherOS\Modules\ClassLeaders\ClassLeaderKind;
 use TeacherOS\Modules\ClassLeaders\ClassLeaderRoutes;
 use TeacherOS\Modules\ClassLeaders\ClassLeadersModule;
 use TeacherOS\Modules\Classes\ClassesModule;
@@ -29,6 +30,7 @@ use TeacherOS\Modules\Subjects\SubjectLinkGuard;
 use TeacherOS\Modules\Subjects\SubjectLinkGuards;
 use TeacherOS\Modules\Subjects\SubjectRoutes;
 use TeacherOS\Modules\Subjects\SubjectsModule;
+use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentKind;
 use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentRoutes;
 use TeacherOS\Modules\TeacherAssignments\TeacherAssignmentsModule;
 
@@ -39,6 +41,8 @@ use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuard;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuards;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupRoutes;
 use TeacherOS\Modules\TeachingGroups\TeachingGroupsModule;
+use TeacherOS\Shared\Assignments\AssignmentRules;
+use TeacherOS\Shared\Assignments\AssignmentSchoolYearGuard;
 use TeacherOS\Shared\Clock\FixedClock;
 use TeacherOS\Shared\Extension\ExtensionPoints;
 use TeacherOS\Shared\Modules\ModuleCatalog;
@@ -177,6 +181,14 @@ return static function (ApiRouter $router, ExtensionPoints $points): void {
         ModuleCatalog::CORE,
         '/api/test/dated-class-leaders',
     );
+
+    // Schuljahr-Einwaende der Zuordnungen mit fester Uhr: die echten Einwaende (die der Module) kennen die echte Uhr; mit TEST_TODAY
+    // meldet sich zusaetzlich je Art ein Einwand mit dem festen Tag an ("Test mit festem Datum").
+    if (is_string($today) && $today !== '') {
+        $dated = new AssignmentRules(new FixedClock($today));
+        $points->get(SchoolYearGuards::class)->register(new AssignmentSchoolYearGuard(TeacherAssignmentKind::get(), rules: $dated));
+        $points->get(SchoolYearGuards::class)->register(new AssignmentSchoolYearGuard(ClassLeaderKind::get(), rules: $dated));
+    }
 
     // Stellvertretend fuer ein spaeteres Zuordnungs-Modul (#67, #68): liest die Obergrenzen der Schuleinstellungen
     // ausschliesslich ueber den Dienst SchoolLimits, ohne deren Speicherung zu kennen.

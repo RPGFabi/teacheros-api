@@ -133,29 +133,35 @@ final class TeachingGroups
     }
 
     /**
-     * Legt eine Fachgruppe an: Schuljahr (404), waehlbares Fach und waehlbare Klassen desselben Schuljahres (409) werden
-     * vorher ueber die Dienste geprueft. Die Eindeutigkeit der Bezeichnung im Schuljahr sichert der eindeutige Schluessel der
-     * Tabelle (auch bei gleichzeitigen Anfragen); Anlegen, Klassen und Audit-Eintrag `teaching_group.created` laufen in einer
-     * Transaktion. Verschwindet Schuljahr, Fach oder eine Klasse zwischen Pruefung und Schreiben, meldet der Fremdschluessel
-     * dasselbe wie die Pruefung.
+     * Legt eine Fachgruppe an: Schuljahr (404), waehlbares Fach und waehlbare Klassen desselben Schuljahres (409). Fach und
+     * Klassen werden in der Transaktion unter gemeinsamer Sperre geprueft ({@see Subjects::lockSelectable()},
+     * {@see Classes::lockSelectable()}), damit ein gleichzeitiges Archivieren keine Fachgruppe mit archiviertem Fach oder
+     * archivierter Klasse entstehen laesst. Die Eindeutigkeit der Bezeichnung im Schuljahr sichert der eindeutige Schluessel der
+     * Tabelle (auch bei gleichzeitigen Anfragen); Anlegen, Klassen und Audit-Eintrag `teaching_group.created` laufen in
+     * derselben Transaktion. Verschwindet das Schuljahr zwischen Pruefung und Schreiben, meldet der Fremdschluessel
+     * (Fehler 1452) es als nicht gefunden.
      *
      * @throws CodedException `school_year_not_found` (404), `subject_not_selectable` (409), `class_not_selectable` (409), `teaching_group_name_taken` (409)
      */
     public function create(Actor $actor, TeachingGroupInput $input): TeachingGroup
     {
         $year = $this->schoolYears->get($input->schoolYearId);
-        $subject = $this->selectableSubject($input->subjectId);
-        $classes = $this->selectableClassesIn($input->schoolYearId, $input->classIds);
         $id = Uuid::v4();
-        $this->inTransaction(function () use ($id, $input, $actor): void {
+        $subject = $classes = null;
+        $this->inTransaction(function () use ($id, $input, $actor, $year, &$subject, &$classes): void {
+            $subject = $this->subjects->lockSelectable($input->subjectId) ?? throw self::subjectNotSelectable();
+            $classes = $this->classes->lockSelectable($year->ref(), $input->attributes->classIds);
+            if (count($classes) !== count($input->attributes->classIds)) {
+                throw self::classNotSelectable();
+            }
             $this->repository->insert($id, $input);
-            $this->audit->record($actor, AuditLog::TEACHING_GROUP_CREATED, 'teaching_group', $id, ['name' => $input->name]);
-        });
-        return new TeachingGroup($id, $input->name, $year->ref(), $subject, $classes);
+            $this->audit->record($actor, AuditLog::TEACHING_GROUP_CREATED, 'teaching_group', $id, ['name' => $input->attributes->name]);
+        }, SchoolYears::notFound());
+        return new TeachingGroup($id, $input->attributes->name, $year->ref(), $subject, $classes);
     }
 
     /**
-     * Aendert Bezeichnung und Klassen nach denselben Regeln wie beim Anlegen ({@see TeachingGroupChanges}); $classIds ist die
+     * Aendert Bezeichnung und Klassen nach denselben Regeln wie beim Anlegen ({@see TeachingGroupAttributes}); $classIds ist die
      * gesamte neue Menge der Klassen. Die Eingabe kommt roh und wird erst geprueft, wenn die Fachgruppe gesperrt und als
      * aenderbar erkannt ist: unbekannt (404) und archiviert (409) gehen der Eingabepruefung (400) vor. Schuljahr und Fach sind
      * nicht aenderbar: abweichende $claimedSchoolYearId und $claimedSubjectId werden abgelehnt (400). Neu hinzukommen duerfen
@@ -178,19 +184,19 @@ final class TeachingGroups
             if ($claimedSubjectId !== null && $claimedSubjectId !== $before['subject_id']) {
                 throw new CodedException('invalid_request', 400, 'Das Fach einer Fachgruppe lässt sich nicht ändern.');
             }
-            $changes = TeachingGroupChanges::fromInput($name, $classIds);
-            $current = $this->repository->classIdsOf($id);
-            $added = array_values(array_diff($changes->classIds, $current));
-            $removed = array_values(array_diff($current, $changes->classIds));
-            if ($added !== []) {
-                $this->selectableClassesIn($before['school_year_id'], $added);
+            $attributes = TeachingGroupAttributes::fromInput($name, $classIds);
+            $current = $this->repository->classIdsOf($id, lock: true);
+            $added = array_values(array_diff($attributes->classIds, $current));
+            $removed = array_values(array_diff($current, $attributes->classIds));
+            if ($added !== [] && count($this->classes->lockSelectableIds($before['school_year_id'], $added)) !== count($added)) {
+                throw self::classNotSelectable();
             }
             foreach ($removed as $classId) {
                 $this->classRemovalGuards->assertRemovable($id, $classId);
             }
-            $this->repository->update($id, $changes, $added, $removed);
-            $this->audit->record($actor, AuditLog::TEACHING_GROUP_UPDATED, 'teaching_group', $id, ['old_name' => $before['name'], 'name' => $changes->name, 'classes_added' => count($added), 'classes_removed' => count($removed)]);
-        });
+            $this->repository->update($id, $attributes, $added, $removed);
+            $this->audit->record($actor, AuditLog::TEACHING_GROUP_UPDATED, 'teaching_group', $id, ['old_name' => $before['name'], 'name' => $attributes->name, 'classes_added' => count($added), 'classes_removed' => count($removed)]);
+        }, self::classNotSelectable());
         return $this->get($id);
     }
 
@@ -259,61 +265,33 @@ final class TeachingGroups
         return $this->repository->find($id, lock: true) ?? throw new CodedException('teaching_group_not_found', 404, 'Die Fachgruppe gibt es nicht.');
     }
 
-    /** Fuehrt die Aenderung samt Audit in einer Transaktion aus; Datenbankfehler der Schluessel werden zu fachlichen ({@see self::translated()}). */
-    private function inTransaction(\Closure $change): void
+    /**
+     * Fuehrt die Aenderung samt Audit in einer Transaktion aus. Datenbankfehler der Schluessel werden ueber die Fehlernummer zu
+     * fachlichen: doppelte Bezeichnung ist `teaching_group_name_taken` (409); ein Verweis auf eine Zeile, die es nicht (mehr)
+     * gibt (1452), ist $missingReference. Fach und Klassen sind in der Transaktion gesperrt und geprueft, ein Verweis kann
+     * daher nur noch am (ungesperrten) Schuljahr scheitern.
+     */
+    private function inTransaction(\Closure $change, ?CodedException $missingReference = null): void
     {
         try {
             Transactions::run($change);
         } catch (\PDOException $e) {
-            throw $this->translated($e);
+            throw match (MysqlError::of($e)) {
+                MysqlError::DUPLICATE_ENTRY => new CodedException('teaching_group_name_taken', 409, 'Im Schuljahr gibt es bereits eine Fachgruppe mit dieser Bezeichnung.'),
+                MysqlError::NO_REFERENCED_ROW => $missingReference ?? $e,
+                default => $e,
+            };
         }
     }
 
-    /** @throws CodedException `subject_not_selectable` (409) */
-    private function selectableSubject(string $subjectId): Subject
+    private static function subjectNotSelectable(): CodedException
     {
-        foreach ($this->subjects->selectable() as $subject) {
-            if ($subject->id === $subjectId) {
-                return $subject;
-            }
-        }
-        throw new CodedException('subject_not_selectable', 409, 'Das Fach gibt es nicht oder es ist nicht wählbar.');
+        return new CodedException('subject_not_selectable', 409, 'Das Fach gibt es nicht oder es ist nicht wählbar.');
     }
 
-    /**
-     * Die genannten Klassen, so wie sie im Schuljahr waehlbar sind (nach Klassenstufe und Bezeichnung).
-     *
-     * @param list<string> $classIds ohne Doppelte
-     * @return list<SchoolClass>
-     * @throws CodedException `class_not_selectable` (409), wenn eine Klasse fehlt, archiviert ist oder zu einem anderen Schuljahr gehoert
-     */
-    private function selectableClassesIn(string $schoolYearId, array $classIds): array
+    private static function classNotSelectable(): CodedException
     {
-        $selected = array_values(array_filter(
-            $this->classes->selectable($schoolYearId),
-            static fn (SchoolClass $class): bool => in_array($class->id, $classIds, true),
-        ));
-        if (count($selected) !== count($classIds)) {
-            throw new CodedException('class_not_selectable', 409, 'Mindestens eine Klasse gibt es nicht, ist archiviert oder gehört nicht zum Schuljahr der Fachgruppe.');
-        }
-        return $selected;
-    }
-
-    /**
-     * Datenbankfehler der Schluessel werden zu fachlichen: doppelte Bezeichnung ist `teaching_group_name_taken` (409); was
-     * zwischen Pruefung und Schreiben verschwunden ist, meldet wie die Pruefung (Schuljahr 404, Fach und Klasse 409).
-     */
-    private function translated(\PDOException $e): \Throwable
-    {
-        return match (MysqlError::of($e)) {
-            MysqlError::DUPLICATE_ENTRY => new CodedException('teaching_group_name_taken', 409, 'Im Schuljahr gibt es bereits eine Fachgruppe mit dieser Bezeichnung.'),
-            MysqlError::NO_REFERENCED_ROW => match (true) {
-                str_contains($e->getMessage(), 'fk_teaching_groups_school_year') => SchoolYears::notFound(),
-                str_contains($e->getMessage(), 'fk_teaching_groups_subject') => new CodedException('subject_not_selectable', 409, 'Das Fach gibt es nicht oder es ist nicht wählbar.'),
-                default => new CodedException('class_not_selectable', 409, 'Mindestens eine Klasse gibt es nicht, ist archiviert oder gehört nicht zum Schuljahr der Fachgruppe.'),
-            },
-            default => $e,
-        };
+        return new CodedException('class_not_selectable', 409, 'Mindestens eine Klasse gibt es nicht, ist archiviert oder gehört nicht zum Schuljahr der Fachgruppe.');
     }
 
     /**

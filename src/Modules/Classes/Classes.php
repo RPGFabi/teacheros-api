@@ -76,6 +76,39 @@ final class Classes
     }
 
     /**
+     * Die waehlbaren Klassen des Schuljahres unter den genannten Kennungen, fuer die Dauer der laufenden Transaktion gesperrt
+     * (sortiert wie {@see self::listIn()}): wer darauf hin etwas speichert (Fachgruppe anlegen oder bearbeiten), muss in einer
+     * Transaktion fragen, damit ein gleichzeitiges Archivieren nicht zwischen Pruefung und Schreiben kommt. Eine archivierte,
+     * unbekannte oder zu einem anderen Schuljahr gehoerende Klasse fehlt in der Antwort.
+     *
+     * Liest in der Transaktion nur sperrend; das Schuljahr bringt der Aufrufer mit (vor der Transaktion gelesen). Die erste
+     * nicht sperrende Lesung legt naemlich den Snapshot der Transaktion an, und danach scheitert jede sperrende Lesung oder
+     * Eindeutigkeitspruefung auf eine gerade geaenderte Zeile unter MariaDBs `innodb_snapshot_isolation` (ab 11.6 Standard)
+     * mit Fehler 1020, statt zu warten.
+     *
+     * @param list<string> $classIds
+     * @return list<SchoolClass>
+     */
+    public function lockSelectable(SchoolYearRef $year, array $classIds): array
+    {
+        $rows = $this->repository->selectableShared($year->id, $classIds);
+        usort($rows, static fn (array $a, array $b): int => ($a['grade_level'] <=> $b['grade_level']) ?: strnatcasecmp($a['name'], $b['name']));
+        return array_map(static fn (array $r): SchoolClass => self::present($r, $year), $rows);
+    }
+
+    /**
+     * Wie {@see self::lockSelectable()}, aber nur die Kennungen der waehlbaren Klassen (unsortiert), fuer Aufrufer, die
+     * lediglich pruefen und sperren.
+     *
+     * @param list<string> $classIds
+     * @return list<string>
+     */
+    public function lockSelectableIds(string $schoolYearId, array $classIds): array
+    {
+        return array_column($this->repository->selectableShared($schoolYearId, $classIds), 'id');
+    }
+
+    /**
      * Legt eine Klasse in einem beliebigen Schuljahr an (laufend, kommend oder vergangen). Die Eindeutigkeit der Bezeichnung
      * sichert der eindeutige Schluessel der Tabelle; Anlegen und Audit-Eintrag `class.created` laufen in einer Transaktion.
      * Wird das Schuljahr zwischen Pruefung und Insert geloescht, meldet der Fremdschluessel es als nicht gefunden.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TeacherOS\Modules\TeacherAssignments;
 
 use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuard;
+use TeacherOS\Shared\Assignments\AssignmentRepository;
 
 /**
  * Verknuepfung der Lehrkraft-Zuordnung an der Fachgruppe (Tickets #65, #67; GLOSSARY.md: Archivierung): Eine Fachgruppe, der
@@ -14,8 +15,11 @@ use TeacherOS\Modules\TeachingGroups\TeachingGroupLinkGuard;
  */
 final class TeacherAssignmentsLinkGuard implements TeachingGroupLinkGuard
 {
-    public function __construct(private readonly TeacherAssignmentRepository $repository = new TeacherAssignmentRepository())
+    private readonly AssignmentRepository $repository;
+
+    public function __construct(?AssignmentRepository $repository = null)
     {
+        $this->repository = $repository ?? new AssignmentRepository(TeacherAssignmentKind::get());
     }
 
     public function label(): string
@@ -23,8 +27,8 @@ final class TeacherAssignmentsLinkGuard implements TeachingGroupLinkGuard
         return 'Lehrkraft-Zuordnung';
     }
 
-    public function isLinked(string $teachingGroupId): bool
+    public function isLinked(string $id): bool
     {
-        return $this->repository->groupHasAssignments($teachingGroupId);
+        return $this->repository->parentHasAssignments($id);
     }
 }

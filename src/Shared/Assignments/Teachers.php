@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TeacherOS\Modules\TeacherAssignments;
+namespace TeacherOS\Shared\Assignments;
 
 use TeacherOS\Shared\Exceptions\CodedException;
 use TeacherOS\Shared\Security\AccountRepository;
@@ -12,8 +12,8 @@ use TeacherOS\Shared\Security\StandardRoles;
  * Wer Lehrkraft ist und zugeordnet werden kann (GLOSSARY.md: Lehrkraft, ADR 0007): ein Konto mit der Standardrolle
  * Lehrkraft, das nicht deaktiviert ist (eingeladen oder aktiv). Eigene Rollen machen ein Konto nicht zur Lehrkraft.
  * Rolle und Status zaehlen nur beim Anlegen einer Zuordnung ({@see self::assertSelectable()}); die Ausgabe bestehender
- * Zuordnungen zeigt jedes Konto mit seinem heutigen Status ({@see self::byIds()}). Gemeinsam fuer Fachgruppen (#67) und
- * Klassenleitungen (#68).
+ * Zuordnungen nennt jedes Konto mit seinem heutigen Anmeldenamen ({@see self::refs()}), ohne E-Mail und Status. Gemeinsam fuer
+ * Fachgruppen (#67) und Klassenleitungen (#68).
  */
 final class Teachers
 {
@@ -45,19 +45,19 @@ final class Teachers
     }
 
     /**
-     * Die Lehrkraefte zu diesen Konto-Kennungen, jedes mit seinem heutigen Status. Ein Konto, das es nicht mehr gibt,
-     * erscheint nur mit Kennung (deaktiviert, ohne Namen).
+     * Die Verweise auf die Lehrkraefte zu diesen Konto-Kennungen: Kennung und heutiger Anmeldename. Ein Konto, das es nicht mehr
+     * gibt, erscheint nur mit Kennung (ohne Namen).
      *
      * @param list<string> $accountIds
-     * @return array<string,Teacher> nach Kennung
+     * @return array<string,TeacherRef> nach Kennung
      */
-    public function byIds(array $accountIds): array
+    public function refs(array $accountIds): array
     {
-        $rows = $this->accounts->summaries(array_values(array_unique($accountIds)));
-        $teachers = [];
+        $names = $this->accounts->loginNames(array_values(array_unique($accountIds)));
+        $refs = [];
         foreach ($accountIds as $id) {
-            $teachers[$id] = isset($rows[$id]) ? Teacher::fromRow($rows[$id]) : new Teacher($id, '', null, 'inactive');
+            $refs[$id] = new TeacherRef($id, $names[$id] ?? '');
         }
-        return $teachers;
+        return $refs;
     }
 }

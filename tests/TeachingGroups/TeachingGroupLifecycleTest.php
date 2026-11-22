@@ -329,6 +329,26 @@ final class TeachingGroupLifecycleTest extends TestCase
         $this->assertSame([$this->class7a], $this->classIdsOf($this->group));
     }
 
+    public function testEineWaehrendDesBearbeitensArchivierteKlasseWirdNichtNeuAufgenommen(): void
+    {
+        $pdo = $this->app->pdo();
+        $pdo->beginTransaction();
+        $pdo->prepare('UPDATE `classes` SET `archived_at` = CURRENT_TIMESTAMP(6) WHERE `id` = ?')->execute([$this->class7b]);
+
+        $r = $this->app->requestReleasedWhenBlocked(
+            'SELECT `id`, `school_year_id`, `grade_level`, `name`, `archived_at` FROM `classes` WHERE %LOCK IN SHARE MODE',
+            static fn () => $pdo->commit(),
+            'POST',
+            self::URI . '/' . $this->group . '/update',
+            $this->headers(self::ADMIN),
+            ['name' => 'Ma 7', 'class_ids' => [$this->class7a, $this->class7b]],
+        );
+
+        $this->assertSame(409, $r['status'], $r['body']);
+        $this->assertSame('class_not_selectable', $r['json']['code']);
+        $this->assertSame([$this->class7a], $this->classIdsOf($this->group));
+    }
+
     public function testEineNachDemVerknuepfenArchivierteKlasseBleibtVerknuepftUndDarfInDerListeBleiben(): void
     {
         $this->act($this->class7a, 'archive', [], self::ADMIN, '/api/classes');
